@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: ruff check .
+      - run: pytest
+      - run: python -m build
+      - name: Audit archive names
+        shell: bash
+        run: |
+          python -m zipfile -l dist/*.whl > wheel-files.txt
+          tar -tzf dist/*.tar.gz > sdist-files.txt
+          if grep -E '/(data|eval|training|kaggle|notebooks|collectors)/' wheel-files.txt sdist-files.txt; then
+            echo "Forbidden package surface found" >&2
+            exit 1
+          fi
+          if grep -E 'smart_bash|training_config\.json' wheel-files.txt sdist-files.txt; then
+            echo "Forbidden private name found" >&2
+            exit 1
+          fi

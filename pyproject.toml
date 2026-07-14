@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shellcue"
+version = "0.1.0a1"
+description = "Local neural command-line suggestions for Bash and Zsh"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{name = "ShellCue contributors"}]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: System :: Shells",
+]
+dependencies = []
+
+[project.optional-dependencies]
+neural = [
+  "safetensors>=0.4",
+  "tokenizers>=0.20",
+  "torch>=2.2",
+  "transformers>=5.0.0",
+]
+dev = [
+  "build>=1.2",
+  "pytest>=8.0",
+  "ruff>=0.9",
+]
+
+[project.scripts]
+shellcue = "shellcue.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/kroffske/shellcue"
+Repository = "https://github.com/kroffske/shellcue"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shellcue"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/LICENSE",
+  "/README.md",
+  "/docs",
+  "/pyproject.toml",
+  "/src",
+  "/tests",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
