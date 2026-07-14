@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "shellcue"
-version = "0.1.0a1"
+version = "0.1.0a2"
 description = "Local neural command-line suggestions for Bash and Zsh"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -49,6 +49,7 @@ packages = ["src/shellcue"]
 include = [
   "/LICENSE",
   "/README.md",
+  "/install.sh",
   "/docs",
   "/pyproject.toml",
   "/src",

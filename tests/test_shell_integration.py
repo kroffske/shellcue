@@ -8,6 +8,9 @@ import pytest
 
 from shellcue.runtime.shell_integration import (
     BLOCK_START,
+    LEGACY_BLOCK_END,
+    LEGACY_BLOCK_START,
+    backup_path,
     install_shell,
     render_shell_init,
     uninstall_shell,
@@ -67,3 +70,58 @@ def test_shell_hook_is_valid_shell_syntax(shell: str) -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_install_migrates_legacy_block_with_one_backup(shell: str, tmp_path: Path) -> None:
+    rc = tmp_path / f".{shell}rc"
+    original = (
+        "# before\n"
+        f"{LEGACY_BLOCK_START}\nlegacy command hook\n{LEGACY_BLOCK_END}\n"
+        "# after\n"
+    )
+    rc.write_text(original, encoding="utf-8")
+
+    install_shell(shell, rc_path=rc)
+    first = rc.read_text(encoding="utf-8")
+    install_shell(shell, rc_path=rc)
+
+    assert LEGACY_BLOCK_START not in first
+    assert "legacy command hook" not in first
+    assert "# before\n# after\n" in first
+    assert first.count(BLOCK_START) == 1
+    assert rc.read_text(encoding="utf-8") == first
+    assert backup_path(rc).read_text(encoding="utf-8") == original
+
+
+def test_incomplete_legacy_block_does_not_mutate_rc(tmp_path: Path) -> None:
+    rc = tmp_path / ".zshrc"
+    original = f"# keep\n{LEGACY_BLOCK_START}\nbroken\n"
+    rc.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="incomplete managed block"):
+        install_shell("zsh", rc_path=rc)
+
+    assert rc.read_text(encoding="utf-8") == original
+    assert not backup_path(rc).exists()
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        f"{LEGACY_BLOCK_START} keep this",
+        f"prefix {LEGACY_BLOCK_START}",
+        f"{LEGACY_BLOCK_END} keep this",
+        f"prefix {LEGACY_BLOCK_END}",
+    ],
+)
+def test_marker_substrings_do_not_delete_user_lines(line: str, tmp_path: Path) -> None:
+    rc = tmp_path / ".zshrc"
+    original = f"# before\n{line}\n# after\n"
+    rc.write_text(original, encoding="utf-8")
+
+    install_shell("zsh", rc_path=rc)
+
+    installed = rc.read_text(encoding="utf-8")
+    assert original in installed
+    assert not backup_path(rc).exists()
