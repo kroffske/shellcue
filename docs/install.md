@@ -10,7 +10,7 @@ execution never needs network access or Hugging Face credentials.
 python -m pip install "shellcue[neural] @ https://github.com/kroffske/shellcue/archive/refs/tags/v0.1.0a1.tar.gz"
 uvx --from huggingface_hub hf download \
   kroffske/shellcue-lfm2.5-230m-alpha \
-  --revision <immutable-hf-commit-oid> \
+  --revision ae5b48546645926a6839df554a46596a8a19498e \
   --local-dir ./shellcue-model
 shellcue model verify ./shellcue-model
 shellcue model install ./shellcue-model --name shellcue-alpha
@@ -50,6 +50,9 @@ persist them.
 - Configuration: `~/.config/shellcue`.
 - Overrides: `SHELLCUE_CACHE_DIR`, `SHELLCUE_CONFIG_DIR`, `SHELLCUE_MODEL_DIR`,
   `SHELLCUE_DAEMON_DIR`, `SHELLCUE_DAEMON_SOCKET`, `SHELLCUE_NEURAL_DTYPE`.
+
+Keep a custom `SHELLCUE_DAEMON_SOCKET` path short. Unix-domain socket paths have a
+small OS-specific length limit; the default ShellCue path stays within it.
 
 The runtime is offline. Download and installation are separate operations.
 

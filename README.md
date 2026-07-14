@@ -13,7 +13,7 @@ or implicit model download. Recent command context is masked before it enters th
 python -m pip install "shellcue[neural] @ https://github.com/kroffske/shellcue/archive/refs/tags/v0.1.0a1.tar.gz"
 uvx --from huggingface_hub hf download \
   kroffske/shellcue-lfm2.5-230m-alpha \
-  --revision <immutable-hf-commit-oid> \
+  --revision ae5b48546645926a6839df554a46596a8a19498e \
   --local-dir ./shellcue-model
 shellcue model verify ./shellcue-model
 shellcue model install ./shellcue-model --name shellcue-alpha
