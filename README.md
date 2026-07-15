@@ -1,34 +1,52 @@
 # ShellCue
 
 ShellCue is a local-first neural suggestion runtime for Bash and Zsh. This branch prepares
-`0.1.0a3`, a development alpha with `DEV_GRADE_SUPPORT`. It is not product-accepted,
+`0.1.0a4`, a development alpha with `DEV_GRADE_SUPPORT`. It is not product-accepted,
 trusted, final, or a replacement for prospective validation on real shell use.
 
 ShellCue performs inference on the local machine. It has no telemetry, hosted inference,
-or implicit model download. Recent command context is masked before it enters the model.
+or runtime network access. `install.sh` explicitly downloads the pinned model once; recent
+command context is masked before it enters the model.
 
-## Install
+## Install from GitHub
 
-The supported bootstrap installs a persistent isolated `uv tool`, the pinned public
-model, the Bash/Zsh hook, and a per-user service. This draft intentionally fails closed
-until the release artifact URL and SHA-256 are finalized. Maintainers can test an exact
-local sdist now:
+Run the installer from a Git checkout on macOS, Ubuntu, or WSL:
 
 ```bash
-uv build --sdist
-export SHELLCUE_PACKAGE_URL="file://$PWD/dist/shellcue-0.1.0a3.tar.gz"
-export SHELLCUE_PACKAGE_SHA256="$(shasum -a 256 dist/shellcue-0.1.0a3.tar.gz | awk '{print $1}')"
+git clone https://github.com/kroffske/shellcue.git
+cd shellcue
 ./install.sh
 ```
 
-`install.sh` installs `uv` if absent, installs `shellcue` with `uv tool install`,
-downloads the Hugging Face snapshot at its immutable commit OID, verifies the accepted
-weights SHA-256, migrates the legacy shell hook, and installs the user service.
-The package declares PyTorch, Transformers, Tokenizers, and Safetensors as mandatory
-runtime dependencies because every supported ShellCue installation performs local inference.
+No package URL or manual model pre-download is required. The bootstrap installs `uv` when
+absent, installs the current checkout as an isolated `uv tool`, downloads and verifies the
+pinned Hugging Face model, installs the Bash/Zsh hook, and starts a per-user service.
+
+The model download performed by the installer is equivalent to:
+
+```bash
+MODEL_DIR="$(mktemp -d)"
+uvx --from huggingface_hub==0.35.0 hf download \
+  kroffske/shellcue-lfm2.5-230m-alpha \
+  --revision ae5b48546645926a6839df554a46596a8a19498e \
+  --local-dir "$MODEL_DIR"
+shellcue model verify "$MODEL_DIR"
+shellcue model install "$MODEL_DIR" --name shellcue-alpha --force
+rm -rf "$MODEL_DIR"
+```
+
+`install.sh` additionally checks the accepted weights and checksum-manifest SHA-256 before
+registering the model. Confirm the completed installation with:
+
+```bash
+shellcue --version
+shellcue model current
+shellcue service status
+shellcue doctor --strict
+```
 
 See [docs/install.md](docs/install.md) for Bash/Zsh setup, removal, offline behavior,
-and troubleshooting.
+the optional digest-bound release-package path, and troubleshooting.
 
 ## Runtime contract
 

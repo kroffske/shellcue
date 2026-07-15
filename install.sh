@@ -4,6 +4,7 @@ set -euo pipefail
 
 UV_VERSION="0.11.28"
 PYTHON_VERSION="3.12"
+EXPECTED_VERSION="0.1.0a4"
 MODEL_REPO="kroffske/shellcue-lfm2.5-230m-alpha"
 MODEL_REVISION="ae5b48546645926a6839df554a46596a8a19498e"
 MODEL_NAME="shellcue-alpha"
@@ -11,6 +12,7 @@ MODEL_WEIGHTS_SHA256="c4f7973c48eb04fa2e8013f0d03171fcfb4ee27c157dea31e96020b12b
 MODEL_CHECKSUMS_SHA256="d781bffab68c5c667eb28f9a1591a7bb2347c16a63f39893f45d118eae5f4025"
 HF_TOOL="huggingface_hub==0.35.0"
 
+SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_URL="${SHELLCUE_PACKAGE_URL:-}"
 PACKAGE_SHA256="${SHELLCUE_PACKAGE_SHA256:-}"
 TARGET_SHELL="${SHELLCUE_SHELL:-${SHELL##*/}}"
@@ -43,9 +45,14 @@ sha256_file() {
   fi
 }
 
-require_package_pin() {
-  [[ -n "$PACKAGE_URL" ]] || fail \
-    "public alpha package is not finalized; set SHELLCUE_PACKAGE_URL to an exact sdist URL"
+validate_install_source() {
+  if [[ -z "$PACKAGE_URL" ]]; then
+    [[ -z "$PACKAGE_SHA256" ]] || fail \
+      "SHELLCUE_PACKAGE_SHA256 requires SHELLCUE_PACKAGE_URL"
+    [[ -f "$SOURCE_DIR/pyproject.toml" && -d "$SOURCE_DIR/src/shellcue" ]] || fail \
+      "source checkout is incomplete; clone the ShellCue repository before running install.sh"
+    return
+  fi
   [[ "$PACKAGE_SHA256" =~ ^[0-9a-f]{64}$ ]] || fail \
     "set SHELLCUE_PACKAGE_SHA256 to the exact 64-character lowercase SHA-256"
 }
@@ -62,19 +69,24 @@ install_uv() {
 }
 
 install_tool() {
-  local package_file="$STAGING_DIR/shellcue.tar.gz"
-  say "downloading digest-bound ShellCue package"
-  curl -fL "$PACKAGE_URL" -o "$package_file"
-  local actual
-  actual="$(sha256_file "$package_file")"
-  [[ "$actual" == "$PACKAGE_SHA256" ]] || fail \
-    "package SHA-256 mismatch: expected ${PACKAGE_SHA256}, got ${actual}"
+  local install_source="$SOURCE_DIR"
+  if [[ -n "$PACKAGE_URL" ]]; then
+    install_source="$STAGING_DIR/shellcue.tar.gz"
+    say "downloading digest-bound ShellCue package"
+    curl -fL "$PACKAGE_URL" -o "$install_source"
+    local actual
+    actual="$(sha256_file "$install_source")"
+    [[ "$actual" == "$PACKAGE_SHA256" ]] || fail \
+      "package SHA-256 mismatch: expected ${PACKAGE_SHA256}, got ${actual}"
+  else
+    say "installing ShellCue from source checkout at $SOURCE_DIR"
+  fi
   stop_current_shellcue
-  local requirement="shellcue @ file://${package_file}"
-  uv tool install --force --python "$PYTHON_VERSION" "$requirement"
+  uv tool install --force --python "$PYTHON_VERSION" "$install_source"
   export PATH="$(uv tool dir --bin):$PATH"
   command -v shellcue >/dev/null 2>&1 || fail "uv installed ShellCue but its bin dir is not on PATH"
-  [[ "$(shellcue --version)" == "shellcue 0.1.0a3" ]] || fail "unexpected ShellCue version"
+  [[ "$(shellcue --version)" == "shellcue ${EXPECTED_VERSION}" ]] || fail \
+    "unexpected ShellCue version"
 }
 
 stop_current_shellcue() {
@@ -196,7 +208,7 @@ wait_for_service_ready() {
 }
 
 main() {
-  require_package_pin
+  validate_install_source
   command -v curl >/dev/null 2>&1 || fail "curl is required"
   STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/shellcue-install.XXXXXX")"
   install_uv

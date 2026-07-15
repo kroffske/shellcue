@@ -1,30 +1,63 @@
 # Install ShellCue development alpha
 
-ShellCue `0.1.0a3` requires Python 3.10 or newer. The bootstrap uses Python 3.12 in a
+ShellCue `0.1.0a4` requires Python 3.10 or newer. The bootstrap uses Python 3.12 in a
 persistent isolated `uv tool` environment. PyTorch, Transformers, Tokenizers, and
 Safetensors are mandatory package dependencies because ShellCue always performs local
 neural inference. Network access occurs only during explicit installation; normal
 runtime execution never needs network access or Hugging Face credentials.
 
-## Supported bootstrap
+## Install from a Git checkout
 
 ```bash
-uv build --sdist
-export SHELLCUE_PACKAGE_URL="file://$PWD/dist/shellcue-0.1.0a3.tar.gz"
-export SHELLCUE_PACKAGE_SHA256="$(shasum -a 256 dist/shellcue-0.1.0a3.tar.gz | awk '{print $1}')"
+git clone https://github.com/kroffske/shellcue.git
+cd shellcue
 ./install.sh
 ```
 
-These package variables are mandatory before the release is finalized. A future tag
-name is not accepted as an immutable package trust anchor. Release finalization must
-publish the exact sdist URL and digest, bind them into the public installation command,
-and re-run the bootstrap.
+With no package variables, `install.sh` installs the checkout containing the script by
+running `uv tool install` against that directory. It then downloads the model, installs
+the shell integration, registers the user service, waits for inference readiness, and
+runs strict diagnostics. Re-running the installer upgrades or repairs the same tool.
+
+## Model download and verification
 
 The installer pins the model repository to Hugging Face commit
 `ae5b48546645926a6839df554a46596a8a19498e` and requires `model.safetensors` SHA-256
 `c4f7973c48eb04fa2e8013f0d03171fcfb4ee27c157dea31e96020b12b84fb53`.
 It removes its temporary download directory after the model registry has made the
 verified managed copy.
+
+The explicit download and registry sequence is:
+
+```bash
+MODEL_DIR="$(mktemp -d)"
+uvx --from huggingface_hub==0.35.0 hf download \
+  kroffske/shellcue-lfm2.5-230m-alpha \
+  --revision ae5b48546645926a6839df554a46596a8a19498e \
+  --local-dir "$MODEL_DIR"
+shellcue model verify "$MODEL_DIR"
+shellcue model install "$MODEL_DIR" --name shellcue-alpha --force
+rm -rf "$MODEL_DIR"
+```
+
+The bootstrap performs these operations automatically and additionally anchors the
+download to the accepted weights and checksum-manifest digests. A valid existing managed
+copy is reused, so repeated installation does not download the model again.
+
+## Optional digest-bound package source
+
+Release testing can replace the checkout with an exact package while keeping the same
+model and service flow:
+
+```bash
+uv build --sdist
+export SHELLCUE_PACKAGE_URL="file://$PWD/dist/shellcue-0.1.0a4.tar.gz"
+export SHELLCUE_PACKAGE_SHA256="$(shasum -a 256 dist/shellcue-0.1.0a4.tar.gz | awk '{print $1}')"
+./install.sh
+```
+
+If `SHELLCUE_PACKAGE_URL` is set, its SHA-256 is mandatory. The checkout path remains the
+default for GitHub users; the package override exists for an immutable release artifact.
 
 ## Platform and service behavior
 
@@ -91,7 +124,8 @@ legacy databases, history, models, or other local data.
 Keep a custom `SHELLCUE_DAEMON_SOCKET` path short. Unix-domain socket paths have a
 small OS-specific length limit; the default ShellCue path stays within it.
 
-The runtime is offline. Download and installation are separate operations.
+The runtime is offline. The bootstrap performs the explicit network download before the
+service starts.
 
 ## Removal
 
@@ -106,8 +140,10 @@ directories only after an explicit decision to remove the local model and config
 
 ## Troubleshooting
 
-- `public alpha package is not finalized` means the draft installer correctly refused
-  a moving or unknown package. Supply an exact sdist URL and SHA-256 as shown above.
+- `SHELLCUE_PACKAGE_SHA256 requires SHELLCUE_PACKAGE_URL` means only half of the optional
+  package override was provided. Unset both variables for checkout installation.
+- `set SHELLCUE_PACKAGE_SHA256` means a package URL was supplied without a valid lowercase
+  SHA-256. Supply the exact digest or unset both package variables.
 - `systemd user services are unavailable` on Ubuntu means the user systemd manager is
   not running. On WSL, either enable systemd or accept the labeled session fallback.
 - `daemon did not become ready` waits 60 seconds by default and terminates only the child
