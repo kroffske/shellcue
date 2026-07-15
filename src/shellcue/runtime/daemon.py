@@ -24,6 +24,8 @@ from shellcue.models.neural import NeuralPredictor
 from shellcue.models.registry import active_model_dir, cache_dir
 from shellcue.runtime.context import RuntimeContext
 
+DEFAULT_START_TIMEOUT = 60.0
+
 
 @dataclass(frozen=True)
 class DaemonStatus:
@@ -82,7 +84,9 @@ def status(timeout: float = 0.2) -> DaemonStatus:
     return DaemonStatus(running=running, pid=pid if running else None, socket_path=socket_path())
 
 
-def start(timeout: float = 15.0) -> DaemonStatus:
+def start(timeout: float = DEFAULT_START_TIMEOUT) -> DaemonStatus:
+    if timeout <= 0:
+        raise ValueError("daemon startup timeout must be positive")
     current = status()
     if current.running:
         return current
@@ -92,9 +96,11 @@ def start(timeout: float = 15.0) -> DaemonStatus:
     load_artifact(model_dir)
     root = daemon_dir()
     root.mkdir(parents=True, exist_ok=True)
+    if _lifetime_lock_held():
+        return _wait_until_ready(timeout=timeout, process=None)
     log = log_path().open("ab")
     try:
-        subprocess.Popen(
+        process = subprocess.Popen(
             [sys.executable, "-m", "shellcue.runtime.daemon"],
             stdin=subprocess.DEVNULL,
             stdout=log,
@@ -104,12 +110,29 @@ def start(timeout: float = 15.0) -> DaemonStatus:
         )
     finally:
         log.close()
+    return _wait_until_ready(timeout=timeout, process=process)
+
+
+def _wait_until_ready(
+    *, timeout: float, process: subprocess.Popen[bytes] | None
+) -> DaemonStatus:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         current = status()
         if current.running:
             return current
+        if process is not None and process.poll() is not None and not _lifetime_lock_held():
+            raise RuntimeError(
+                f"daemon exited with code {process.returncode}; see {log_path()}"
+            )
         time.sleep(0.05)
+    if process is not None and process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=3.0)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=3.0)
     raise RuntimeError(f"daemon did not become ready; see {log_path()}")
 
 
@@ -125,7 +148,7 @@ def stop(timeout: float = 3.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if not _pid_alive(pid) and _probe_daemon_pid(timeout=0.05) is None:
-            _cleanup_state()
+            _cleanup_state(owner_pid=pid)
             return True
         time.sleep(0.05)
     raise RuntimeError("daemon termination was not confirmed before timeout")
@@ -167,10 +190,6 @@ def request(payload: dict[str, Any], *, timeout: float) -> dict[str, Any]:
 
 
 def serve_forever() -> int:
-    model_dir = active_model_dir()
-    if model_dir is None:
-        raise RuntimeError("no active model")
-    predictor = NeuralPredictor.from_artifact(load_artifact(model_dir))
     root = daemon_dir()
     root.mkdir(parents=True, exist_ok=True)
     lock = lock_path().open("a+")
@@ -179,22 +198,29 @@ def serve_forever() -> int:
     except BlockingIOError as exc:
         lock.close()
         raise RuntimeError("another ShellCue daemon owns the runtime lock") from exc
-    sock = socket_path()
-    sock.unlink(missing_ok=True)
-    pid_path().write_text(f"{os.getpid()}\n", encoding="utf-8")
-    os.chmod(pid_path(), 0o600)
-    server = _Server(str(sock), predictor)
-    os.chmod(sock, 0o600)
-
-    def shutdown(_signum: int, _frame: object) -> None:
-        threading.Thread(target=server.shutdown, daemon=True).start()
-
-    signal.signal(signal.SIGTERM, shutdown)
     try:
-        server.serve_forever(poll_interval=0.1)
+        model_dir = active_model_dir()
+        if model_dir is None:
+            raise RuntimeError("no active model")
+        predictor = NeuralPredictor.from_artifact(load_artifact(model_dir))
+        sock = socket_path()
+        sock.unlink(missing_ok=True)
+        owner_pid = os.getpid()
+        pid_path().write_text(f"{owner_pid}\n", encoding="utf-8")
+        os.chmod(pid_path(), 0o600)
+        server = _Server(str(sock), predictor)
+        os.chmod(sock, 0o600)
+
+        def shutdown(_signum: int, _frame: object) -> None:
+            threading.Thread(target=server.shutdown, daemon=True).start()
+
+        signal.signal(signal.SIGTERM, shutdown)
+        try:
+            server.serve_forever(poll_interval=0.1)
+        finally:
+            server.server_close()
+            _cleanup_state(owner_pid=owner_pid)
     finally:
-        server.server_close()
-        _cleanup_state()
         fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
         lock.close()
     return 0
@@ -295,7 +321,21 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
-def _cleanup_state() -> None:
+def _lifetime_lock_held() -> bool:
+    root = daemon_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    with lock_path().open("a+") as lock:
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+    return False
+
+
+def _cleanup_state(*, owner_pid: int) -> None:
+    if _read_pid() != owner_pid:
+        return
     socket_path().unlink(missing_ok=True)
     pid_path().unlink(missing_ok=True)
 

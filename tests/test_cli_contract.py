@@ -24,13 +24,21 @@ def test_public_cli_surface_is_exact() -> None:
     assert set(commands) == {
         "suggest",
         "daemon",
+        "service",
         "model",
         "shell-init",
         "install-shell",
         "uninstall-shell",
         "doctor",
     }
-    assert set(_choices(commands["daemon"])) == {"start", "stop", "status"}
+    assert set(_choices(commands["daemon"])) == {"start", "stop", "status", "run"}
+    assert set(_choices(commands["service"])) == {
+        "install",
+        "uninstall",
+        "start",
+        "stop",
+        "status",
+    }
     assert set(_choices(commands["model"])) == {
         "install",
         "list",
@@ -42,7 +50,7 @@ def test_public_cli_surface_is_exact() -> None:
 
 
 def test_version_and_shell_init(capsys) -> None:
-    assert __version__ == "0.1.0a1"
+    assert __version__ == "0.1.0a3"
     assert main(["shell-init", "zsh"]) == 0
     output = capsys.readouterr().out
     assert "command shellcue" in output

@@ -1,23 +1,54 @@
 # Install ShellCue development alpha
 
-ShellCue `0.1.0a1` requires Python 3.10 or newer. Neural inference requires
-Transformers 5.0.0 or newer. The documented model download is explicit so normal runtime
-execution never needs network access or Hugging Face credentials.
+ShellCue `0.1.0a3` requires Python 3.10 or newer. The bootstrap uses Python 3.12 in a
+persistent isolated `uv tool` environment. PyTorch, Transformers, Tokenizers, and
+Safetensors are mandatory package dependencies because ShellCue always performs local
+neural inference. Network access occurs only during explicit installation; normal
+runtime execution never needs network access or Hugging Face credentials.
 
-## Install runtime and pinned model
+## Supported bootstrap
 
 ```bash
-python -m pip install "shellcue[neural] @ https://github.com/kroffske/shellcue/archive/refs/tags/v0.1.0a1.tar.gz"
-uvx --from huggingface_hub hf download \
-  kroffske/shellcue-lfm2.5-230m-alpha \
-  --revision ae5b48546645926a6839df554a46596a8a19498e \
-  --local-dir ./shellcue-model
-shellcue model verify ./shellcue-model
-shellcue model install ./shellcue-model --name shellcue-alpha
-shellcue doctor --strict
+uv build --sdist
+export SHELLCUE_PACKAGE_URL="file://$PWD/dist/shellcue-0.1.0a3.tar.gz"
+export SHELLCUE_PACKAGE_SHA256="$(shasum -a 256 dist/shellcue-0.1.0a3.tar.gz | awk '{print $1}')"
+./install.sh
 ```
 
-Use a Hugging Face commit OID, not a moving branch or tag, as the trust anchor.
+These package variables are mandatory before the release is finalized. A future tag
+name is not accepted as an immutable package trust anchor. Release finalization must
+publish the exact sdist URL and digest, bind them into the public installation command,
+and re-run the bootstrap.
+
+The installer pins the model repository to Hugging Face commit
+`ae5b48546645926a6839df554a46596a8a19498e` and requires `model.safetensors` SHA-256
+`c4f7973c48eb04fa2e8013f0d03171fcfb4ee27c157dea31e96020b12b84fb53`.
+It removes its temporary download directory after the model registry has made the
+verified managed copy.
+
+## Platform and service behavior
+
+| Platform | Backend | Support |
+|---|---|---|
+| macOS | per-user LaunchAgent | Full local lifecycle target. No root install. |
+| Ubuntu Linux | per-user systemd unit | Supported when the user systemd manager is available. |
+| WSL with systemd | per-user systemd unit | Same backend as Ubuntu. |
+| WSL without systemd | session daemon | Explicitly unsupervised; it does not survive session/WSL restart. |
+
+The service definition uses the absolute Python executable in the uv tool environment.
+It also records `HOME`, ShellCue cache, config, and daemon directories, so it does not
+depend on interactive-shell activation or `PATH`.
+
+```bash
+shellcue service status
+shellcue service stop
+shellcue service start
+shellcue service uninstall
+shellcue service install
+```
+
+On WSL without systemd, ShellCue labels the daemon `unsupervised` and tells the operator
+to enable systemd in `/etc/wsl.conf`; it never claims that a restartable service exists.
 
 ## Shell integration
 
@@ -44,6 +75,12 @@ history entries through bounded NUL-delimited standard input, keeping raw comman
 of process arguments. The runtime masks them in memory before inference and does not
 persist them.
 
+Installation also removes the exact legacy `smart-bash autocomplete` managed block.
+Before changing an rc file it retains the original once as `.zshrc.shellcue-backup` or
+`.bashrc.shellcue-backup`. It asks a live legacy daemon to shut down over its Unix socket;
+it never trusts a PID file, signals a legacy PID, uninstalls the legacy tool, or deletes
+legacy databases, history, models, or other local data.
+
 ## Local state and overrides
 
 - Models and daemon state: `~/.cache/shellcue`.
@@ -55,6 +92,31 @@ Keep a custom `SHELLCUE_DAEMON_SOCKET` path short. Unix-domain socket paths have
 small OS-specific length limit; the default ShellCue path stays within it.
 
 The runtime is offline. Download and installation are separate operations.
+
+## Removal
+
+```bash
+shellcue service uninstall
+shellcue uninstall-shell zsh  # or bash
+uv tool uninstall shellcue
+```
+
+These commands leave `~/.cache/shellcue` and `~/.config/shellcue` intact. Delete those
+directories only after an explicit decision to remove the local model and configuration.
+
+## Troubleshooting
+
+- `public alpha package is not finalized` means the draft installer correctly refused
+  a moving or unknown package. Supply an exact sdist URL and SHA-256 as shown above.
+- `systemd user services are unavailable` on Ubuntu means the user systemd manager is
+  not running. On WSL, either enable systemd or accept the labeled session fallback.
+- `daemon did not become ready` waits 60 seconds by default and terminates only the child
+  spawned by that command. Increase it with `shellcue daemon start --timeout 120` on a
+  slow cold load, then inspect `~/.cache/shellcue/daemon/shellcue.log`.
+- The bootstrap waits up to 120 seconds for the inference socket after registering the
+  service. Set `SHELLCUE_SERVICE_READY_TIMEOUT` to a larger integer on slower hardware.
+- `shellcue service status` reports service-manager state. `shellcue doctor --strict`
+  separately verifies Python, neural dependencies, and the active model.
 
 ## Alpha status and licenses
 

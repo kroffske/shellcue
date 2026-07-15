@@ -115,3 +115,71 @@ def test_client_rejects_every_invalid_daemon_candidate(candidate: object, monkey
         daemon.suggest(
             prefix="git s", cwd=None, recent_commands=[], limit=1
         )
+
+
+class _FakeProcess:
+    returncode: int | None = None
+
+    def __init__(self) -> None:
+        self.terminated = False
+        self.killed = False
+        self.waits: list[float] = []
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def kill(self) -> None:
+        self.killed = True
+
+    def wait(self, timeout: float) -> int:
+        self.waits.append(timeout)
+        self.returncode = -15 if not self.killed else -9
+        return self.returncode
+
+
+def test_start_timeout_terminates_only_retained_child(monkeypatch) -> None:
+    process = _FakeProcess()
+    stopped = daemon.DaemonStatus(False, None, Path("/tmp/not-ready.sock"))
+    times = iter((0.0, 1.0))
+    monkeypatch.setattr(daemon, "status", lambda: stopped)
+    monkeypatch.setattr(daemon.time, "monotonic", lambda: next(times))
+
+    with pytest.raises(RuntimeError, match="did not become ready"):
+        daemon._wait_until_ready(timeout=0.1, process=process)  # type: ignore[arg-type]
+
+    assert process.terminated is True
+    assert process.killed is False
+    assert process.waits == [3.0]
+
+
+def test_cleanup_does_not_remove_replacement_state(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("SHELLCUE_DAEMON_DIR", str(tmp_path))
+    daemon.pid_path().write_text("9002\n", encoding="utf-8")
+    daemon.socket_path().write_text("replacement", encoding="utf-8")
+
+    daemon._cleanup_state(owner_pid=9001)
+
+    assert daemon.pid_path().read_text(encoding="utf-8") == "9002\n"
+    assert daemon.socket_path().read_text(encoding="utf-8") == "replacement"
+
+
+def test_start_waits_for_lock_owner_without_spawning(tmp_path: Path, monkeypatch) -> None:
+    model = tmp_path / "model"
+    model.mkdir()
+    stopped = daemon.DaemonStatus(False, None, tmp_path / "daemon.sock")
+    running = daemon.DaemonStatus(True, 8123, tmp_path / "daemon.sock")
+    statuses = iter((stopped, running))
+    monkeypatch.setattr(daemon, "status", lambda: next(statuses))
+    monkeypatch.setattr(daemon, "active_model_dir", lambda: model)
+    monkeypatch.setattr(daemon, "load_artifact", lambda _path: object())
+    monkeypatch.setattr(daemon, "_lifetime_lock_held", lambda: True)
+    monkeypatch.setattr(
+        daemon.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("must not spawn while lifetime lock is held"),
+    )
+
+    assert daemon.start(timeout=1.0) == running

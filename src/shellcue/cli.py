@@ -21,7 +21,7 @@ from shellcue.models.registry import (
     uninstall_model,
     use_model,
 )
-from shellcue.runtime import daemon
+from shellcue.runtime import daemon, service
 from shellcue.runtime.context import MAX_HISTORY, MAX_INPUT_COMMAND_CHARS, RuntimeContext
 from shellcue.runtime.doctor import checks
 from shellcue.runtime.shell_integration import (
@@ -47,12 +47,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     daemon_parser = commands.add_parser("daemon", help="manage resident inference")
     daemon_commands = daemon_parser.add_subparsers(dest="daemon_command", required=True)
-    for name, handler in (
-        ("start", _cmd_daemon_start),
-        ("stop", _cmd_daemon_stop),
-        ("status", _cmd_daemon_status),
-    ):
+    start_daemon = daemon_commands.add_parser("start")
+    start_daemon.add_argument("--timeout", type=float, default=daemon.DEFAULT_START_TIMEOUT)
+    start_daemon.set_defaults(handler=_cmd_daemon_start)
+    for name, handler in (("stop", _cmd_daemon_stop), ("status", _cmd_daemon_status)):
         item = daemon_commands.add_parser(name)
+        item.set_defaults(handler=handler)
+    run_daemon = daemon_commands.add_parser("run", help="run in foreground for supervision")
+    run_daemon.set_defaults(handler=_cmd_daemon_run)
+
+    service_parser = commands.add_parser("service", help="manage the per-user service")
+    service_commands = service_parser.add_subparsers(dest="service_command", required=True)
+    for name, handler in (
+        ("install", _cmd_service_install),
+        ("uninstall", _cmd_service_uninstall),
+        ("start", _cmd_service_start),
+        ("stop", _cmd_service_stop),
+        ("status", _cmd_service_status),
+    ):
+        item = service_commands.add_parser(name)
         item.set_defaults(handler=handler)
 
     model = commands.add_parser("model", help="manage local model snapshots")
@@ -148,8 +161,8 @@ def _cmd_suggest(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_daemon_start(_args: argparse.Namespace) -> int:
-    state = daemon.start()
+def _cmd_daemon_start(args: argparse.Namespace) -> int:
+    state = daemon.start(timeout=args.timeout)
     print(f"running pid={state.pid} socket={state.socket_path}")
     return 0
 
@@ -162,6 +175,43 @@ def _cmd_daemon_stop(_args: argparse.Namespace) -> int:
 def _cmd_daemon_status(_args: argparse.Namespace) -> int:
     state = daemon.status()
     print(f"running pid={state.pid} socket={state.socket_path}" if state.running else "not running")
+    return 0 if state.running else 1
+
+
+def _cmd_daemon_run(_args: argparse.Namespace) -> int:
+    return daemon.serve_forever()
+
+
+def _print_service_state(state: service.ServiceState) -> None:
+    supervision = "supervised" if state.supervised else "unsupervised"
+    installed = "installed" if state.installed else "not-installed"
+    running = "running" if state.running else "stopped"
+    print(f"{state.backend} {supervision} {installed} {running}: {state.detail}")
+
+
+def _cmd_service_install(_args: argparse.Namespace) -> int:
+    _print_service_state(service.install())
+    return 0
+
+
+def _cmd_service_uninstall(_args: argparse.Namespace) -> int:
+    _print_service_state(service.uninstall())
+    return 0
+
+
+def _cmd_service_start(_args: argparse.Namespace) -> int:
+    _print_service_state(service.start())
+    return 0
+
+
+def _cmd_service_stop(_args: argparse.Namespace) -> int:
+    _print_service_state(service.stop())
+    return 0
+
+
+def _cmd_service_status(_args: argparse.Namespace) -> int:
+    state = service.status()
+    _print_service_state(state)
     return 0 if state.running else 1
 
 

@@ -1,7 +1,7 @@
 # ShellCue
 
-ShellCue is a local-first neural suggestion runtime for Bash and Zsh. This release is
-`0.1.0a1`, a development alpha with `DEV_GRADE_SUPPORT`. It is not product-accepted,
+ShellCue is a local-first neural suggestion runtime for Bash and Zsh. This branch prepares
+`0.1.0a3`, a development alpha with `DEV_GRADE_SUPPORT`. It is not product-accepted,
 trusted, final, or a replacement for prospective validation on real shell use.
 
 ShellCue performs inference on the local machine. It has no telemetry, hosted inference,
@@ -9,18 +9,23 @@ or implicit model download. Recent command context is masked before it enters th
 
 ## Install
 
+The supported bootstrap installs a persistent isolated `uv tool`, the pinned public
+model, the Bash/Zsh hook, and a per-user service. This draft intentionally fails closed
+until the release artifact URL and SHA-256 are finalized. Maintainers can test an exact
+local sdist now:
+
 ```bash
-python -m pip install "shellcue[neural] @ https://github.com/kroffske/shellcue/archive/refs/tags/v0.1.0a1.tar.gz"
-uvx --from huggingface_hub hf download \
-  kroffske/shellcue-lfm2.5-230m-alpha \
-  --revision ae5b48546645926a6839df554a46596a8a19498e \
-  --local-dir ./shellcue-model
-shellcue model verify ./shellcue-model
-shellcue model install ./shellcue-model --name shellcue-alpha
-shellcue doctor --strict
-shellcue suggest --prefix "git s"
-shellcue install-shell zsh
+uv build --sdist
+export SHELLCUE_PACKAGE_URL="file://$PWD/dist/shellcue-0.1.0a3.tar.gz"
+export SHELLCUE_PACKAGE_SHA256="$(shasum -a 256 dist/shellcue-0.1.0a3.tar.gz | awk '{print $1}')"
+./install.sh
 ```
+
+`install.sh` installs `uv` if absent, installs `shellcue` with `uv tool install`,
+downloads the Hugging Face snapshot at its immutable commit OID, verifies the accepted
+weights SHA-256, migrates the legacy shell hook, and installs the user service.
+The package declares PyTorch, Transformers, Tokenizers, and Safetensors as mandatory
+runtime dependencies because every supported ShellCue installation performs local inference.
 
 See [docs/install.md](docs/install.md) for Bash/Zsh setup, removal, offline behavior,
 and troubleshooting.
@@ -41,6 +46,8 @@ their model repository's license. The alpha model is derived from
 ```text
 shellcue suggest
 shellcue daemon start|stop|status
+shellcue daemon run
+shellcue service install|uninstall|start|stop|status
 shellcue model install|list|current|use|uninstall|verify
 shellcue shell-init
 shellcue install-shell
@@ -53,7 +60,7 @@ No history import, recording, collection, training, evaluation, or upload comman
 ## Development
 
 ```bash
-python -m pip install -e ".[dev]"
+uv sync --extra dev
 ruff check .
 pytest
 python -m build
