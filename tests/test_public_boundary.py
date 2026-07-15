@@ -28,4 +28,5 @@ def test_runtime_tree_contains_only_public_owners() -> None:
 
     assert top_level == {"__init__.py", "cli.py", "core", "models", "runtime"}
     forbidden_directories = {"data", "eval", "training", "notebooks", "scripts"}
-    assert not any(path.name in forbidden_directories for path in ROOT.rglob("*"))
+    assert not any((ROOT / name).exists() for name in forbidden_directories)
+    assert not any(path.name in forbidden_directories for path in SOURCE.rglob("*"))

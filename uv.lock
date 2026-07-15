@@ -1121,8 +1121,14 @@ wheels = [
 
 [[package]]
 name = "shellcue"
-version = "0.1.0a2"
+version = "0.1.0a3"
 source = { editable = "." }
+dependencies = [
+    { name = "safetensors" },
+    { name = "tokenizers" },
+    { name = "torch" },
+    { name = "transformers" },
+]
 
 [package.optional-dependencies]
 dev = [
@@ -1130,24 +1136,18 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
-neural = [
-    { name = "safetensors" },
-    { name = "tokenizers" },
-    { name = "torch" },
-    { name = "transformers" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9" },
-    { name = "safetensors", marker = "extra == 'neural'", specifier = ">=0.4" },
-    { name = "tokenizers", marker = "extra == 'neural'", specifier = ">=0.20" },
-    { name = "torch", marker = "extra == 'neural'", specifier = ">=2.2" },
-    { name = "transformers", marker = "extra == 'neural'", specifier = ">=5.0.0" },
+    { name = "safetensors", specifier = ">=0.4" },
+    { name = "tokenizers", specifier = ">=0.20" },
+    { name = "torch", specifier = ">=2.2" },
+    { name = "transformers", specifier = ">=5.0.0" },
 ]
-provides-extras = ["neural", "dev"]
+provides-extras = ["dev"]
 
 [[package]]
 name = "shellingham"

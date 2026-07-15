@@ -70,11 +70,11 @@ install_tool() {
   [[ "$actual" == "$PACKAGE_SHA256" ]] || fail \
     "package SHA-256 mismatch: expected ${PACKAGE_SHA256}, got ${actual}"
   stop_current_shellcue
-  local requirement="shellcue[neural] @ file://${package_file}"
+  local requirement="shellcue @ file://${package_file}"
   uv tool install --force --python "$PYTHON_VERSION" "$requirement"
   export PATH="$(uv tool dir --bin):$PATH"
   command -v shellcue >/dev/null 2>&1 || fail "uv installed ShellCue but its bin dir is not on PATH"
-  [[ "$(shellcue --version)" == "shellcue 0.1.0a2" ]] || fail "unexpected ShellCue version"
+  [[ "$(shellcue --version)" == "shellcue 0.1.0a3" ]] || fail "unexpected ShellCue version"
 }
 
 stop_current_shellcue() {

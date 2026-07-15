@@ -46,7 +46,7 @@ def _dependency_check(name: str, *, minimum: tuple[int, ...]) -> Check:
     try:
         version = importlib.metadata.version(name)
     except importlib.metadata.PackageNotFoundError:
-        return Check(name, False, "not installed; install shellcue[neural]")
+        return Check(name, False, "not installed; reinstall shellcue")
     numbers = tuple(int(part) for part in version.split(".")[:3] if part.isdigit())
     return Check(name, numbers >= minimum, version)
 

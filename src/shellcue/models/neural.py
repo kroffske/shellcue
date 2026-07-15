@@ -38,7 +38,7 @@ class NeuralPredictor:
             from transformers import AutoModelForCausalLM, AutoTokenizer
         except ImportError as exc:
             raise RuntimeError(
-                "neural dependencies are unavailable; install shellcue[neural]"
+                "required neural dependencies are unavailable; reinstall shellcue"
             ) from exc
         transformers.utils.logging.set_verbosity_error()
         transformers.utils.logging.disable_progress_bar()

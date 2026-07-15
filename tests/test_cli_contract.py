@@ -50,7 +50,7 @@ def test_public_cli_surface_is_exact() -> None:
 
 
 def test_version_and_shell_init(capsys) -> None:
-    assert __version__ == "0.1.0a2"
+    assert __version__ == "0.1.0a3"
     assert main(["shell-init", "zsh"]) == 0
     output = capsys.readouterr().out
     assert "command shellcue" in output

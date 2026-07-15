@@ -1,7 +1,7 @@
 # ShellCue
 
 ShellCue is a local-first neural suggestion runtime for Bash and Zsh. This branch prepares
-`0.1.0a2`, a development alpha with `DEV_GRADE_SUPPORT`. It is not product-accepted,
+`0.1.0a3`, a development alpha with `DEV_GRADE_SUPPORT`. It is not product-accepted,
 trusted, final, or a replacement for prospective validation on real shell use.
 
 ShellCue performs inference on the local machine. It has no telemetry, hosted inference,
@@ -16,14 +16,16 @@ local sdist now:
 
 ```bash
 uv build --sdist
-export SHELLCUE_PACKAGE_URL="file://$PWD/dist/shellcue-0.1.0a2.tar.gz"
-export SHELLCUE_PACKAGE_SHA256="$(shasum -a 256 dist/shellcue-0.1.0a2.tar.gz | awk '{print $1}')"
+export SHELLCUE_PACKAGE_URL="file://$PWD/dist/shellcue-0.1.0a3.tar.gz"
+export SHELLCUE_PACKAGE_SHA256="$(shasum -a 256 dist/shellcue-0.1.0a3.tar.gz | awk '{print $1}')"
 ./install.sh
 ```
 
-`install.sh` installs `uv` if absent, installs `shellcue[neural]` with `uv tool install`,
+`install.sh` installs `uv` if absent, installs `shellcue` with `uv tool install`,
 downloads the Hugging Face snapshot at its immutable commit OID, verifies the accepted
 weights SHA-256, migrates the legacy shell hook, and installs the user service.
+The package declares PyTorch, Transformers, Tokenizers, and Safetensors as mandatory
+runtime dependencies because every supported ShellCue installation performs local inference.
 
 See [docs/install.md](docs/install.md) for Bash/Zsh setup, removal, offline behavior,
 and troubleshooting.

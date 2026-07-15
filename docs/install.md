@@ -1,16 +1,17 @@
 # Install ShellCue development alpha
 
-ShellCue `0.1.0a2` requires Python 3.10 or newer. The bootstrap uses Python 3.12 in a
-persistent isolated `uv tool` environment. Neural inference requires Transformers 5.0.0
-or newer. Network access occurs only during explicit installation; normal runtime
-execution never needs network access or Hugging Face credentials.
+ShellCue `0.1.0a3` requires Python 3.10 or newer. The bootstrap uses Python 3.12 in a
+persistent isolated `uv tool` environment. PyTorch, Transformers, Tokenizers, and
+Safetensors are mandatory package dependencies because ShellCue always performs local
+neural inference. Network access occurs only during explicit installation; normal
+runtime execution never needs network access or Hugging Face credentials.
 
 ## Supported bootstrap
 
 ```bash
 uv build --sdist
-export SHELLCUE_PACKAGE_URL="file://$PWD/dist/shellcue-0.1.0a2.tar.gz"
-export SHELLCUE_PACKAGE_SHA256="$(shasum -a 256 dist/shellcue-0.1.0a2.tar.gz | awk '{print $1}')"
+export SHELLCUE_PACKAGE_URL="file://$PWD/dist/shellcue-0.1.0a3.tar.gz"
+export SHELLCUE_PACKAGE_SHA256="$(shasum -a 256 dist/shellcue-0.1.0a3.tar.gz | awk '{print $1}')"
 ./install.sh
 ```
 
