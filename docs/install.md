@@ -1,3 +1,16 @@
+---
+title: Install ShellCue development alpha
+type: guide
+status: active
+owner: ShellCue contributors
+tags: [install, model, uninstall]
+updated: "2026-07-16T22:49:17Z"
+source_commit: "1a53244d7494"
+update_event: "review_refresh"
+context: "changes=L files=12 task=T-101"
+description: "Documents the reviewed checkout installer, CPU-only runtime, managed model, and safe purge boundary."
+---
+
 # Install ShellCue development alpha
 
 ShellCue `0.1.0a4` requires Python 3.10 or newer. The bootstrap uses Python 3.12 in a
@@ -17,7 +30,9 @@ cd shellcue
 With no package variables, `install.sh` installs the checkout containing the script by
 running `uv tool install` against that directory. It then downloads the model, installs
 the shell integration, registers the user service, waits for inference readiness, and
-runs strict diagnostics. Re-running the installer upgrades or repairs the same tool.
+runs strict diagnostics. The isolated tool uses uv's CPU-only PyTorch backend, so Ubuntu
+and WSL installations do not pull CUDA libraries. Re-running the installer upgrades or
+repairs the same tool.
 
 ## Model download and verification
 
@@ -36,6 +51,7 @@ uvx --from huggingface_hub==0.35.0 hf download \
   --revision ae5b48546645926a6839df554a46596a8a19498e \
   --local-dir "$MODEL_DIR"
 shellcue model verify "$MODEL_DIR"
+rm -rf "$MODEL_DIR/.cache"
 shellcue model install "$MODEL_DIR" --name shellcue-alpha --force
 rm -rf "$MODEL_DIR"
 ```
@@ -129,14 +145,30 @@ service starts.
 
 ## Removal
 
+Remove the service and managed blocks from both Bash and Zsh while preserving local models
+and configuration:
+
 ```bash
-shellcue service uninstall
-shellcue uninstall-shell zsh  # or bash
+shellcue uninstall
 uv tool uninstall shellcue
 ```
 
-These commands leave `~/.cache/shellcue` and `~/.config/shellcue` intact. Delete those
-directories only after an explicit decision to remove the local model and configuration.
+Use the explicit purge flag to remove all ShellCue-owned cache, models, configuration, and
+daemon state before removing the program:
+
+```bash
+shellcue uninstall --purge
+uv tool uninstall shellcue
+```
+
+Purge honors `SHELLCUE_CACHE_DIR`, `SHELLCUE_CONFIG_DIR`, and independently overridden
+`SHELLCUE_DAEMON_DIR` or `SHELLCUE_DAEMON_SOCKET` paths. A root named `shellcue` is removed
+as application-owned state. For any other overridden root, purge removes only recognized
+ShellCue entries and preserves the root when unrelated entries remain. Symlinks, unsafe
+broad roots, and unexpected entry types are rejected before deleting anything. It never removes
+`~/.cache/huggingface`, an external `SHELLCUE_MODEL_DIR`, legacy Smart Bash data, or the
+`uv` tool installation itself. Plain `shellcue uninstall` intentionally keeps the cache
+and configuration for a later reinstall.
 
 ## Troubleshooting
 
@@ -157,5 +189,7 @@ directories only after an explicit decision to remove the local model and config
 ## Alpha status and licenses
 
 This is a development alpha with `DEV_GRADE_SUPPORT`, not product acceptance. Runtime
-code is MIT licensed. Model weights have a separate model license and attribution in the
-Hugging Face repository; the runtime license does not cover those weights.
+code is MIT licensed. Model weights use the separate LFM Open License v1.0, which includes
+a commercial-use limitation, plus attribution in the Hugging Face repository. Review the
+complete model terms before use or redistribution; the runtime license does not cover the
+weights.

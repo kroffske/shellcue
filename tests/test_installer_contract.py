@@ -30,8 +30,12 @@ def test_installer_defaults_to_checkout_and_freezes_external_inputs() -> None:
     assert 'SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"' in source
     assert "model_is_accepted" in source
     assert "shasum -a 256 -c checksums.sha256" in source
+    assert 'rm -rf -- "$model_dir/.cache"' in source
     assert 'local install_source="$SOURCE_DIR"' in source
-    assert 'uv tool install --force --python "$PYTHON_VERSION" "$install_source"' in source
+    assert (
+        'uv tool install --force --python "$PYTHON_VERSION" --torch-backend cpu '
+        '"$install_source"' in source
+    )
     assert "shellcue[neural]" not in source
     assert "SHELLCUE_PACKAGE_URL" in source
     assert "SHELLCUE_PACKAGE_SHA256" in source
@@ -50,8 +54,8 @@ def test_neural_runtime_dependencies_are_mandatory() -> None:
 
     assert '"safetensors>=0.4"' in mandatory
     assert '"tokenizers>=0.20"' in mandatory
-    assert '"torch>=2.2"' in mandatory
-    assert '"transformers>=5.0.0"' in mandatory
+    assert '"torch>=2.2,<3"' in mandatory
+    assert '"transformers>=5.0.0,<6"' in mandatory
     assert "\nneural = [" not in source
 
 

@@ -82,8 +82,10 @@ install_tool() {
     say "installing ShellCue from source checkout at $SOURCE_DIR"
   fi
   stop_current_shellcue
-  uv tool install --force --python "$PYTHON_VERSION" "$install_source"
-  export PATH="$(uv tool dir --bin):$PATH"
+  uv tool install --force --python "$PYTHON_VERSION" --torch-backend cpu "$install_source"
+  local tool_bin
+  tool_bin="$(uv tool dir --bin)"
+  export PATH="$tool_bin:$PATH"
   command -v shellcue >/dev/null 2>&1 || fail "uv installed ShellCue but its bin dir is not on PATH"
   [[ "$(shellcue --version)" == "shellcue ${EXPECTED_VERSION}" ]] || fail \
     "unexpected ShellCue version"
@@ -129,6 +131,7 @@ install_model() {
     --revision "$MODEL_REVISION" --local-dir "$model_dir"
   model_is_accepted "$model_dir" || fail \
     "downloaded model does not match the accepted checksum manifest"
+  rm -rf -- "$model_dir/.cache"
   shellcue model install "$model_dir" --name "$MODEL_NAME" --force
 }
 
