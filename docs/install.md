@@ -4,10 +4,10 @@ type: guide
 status: active
 owner: ShellCue contributors
 tags: [install, model, uninstall]
-updated: "2026-07-16T22:49:17Z"
-source_commit: "1a53244d7494"
-update_event: "review_refresh"
-context: "changes=L files=12 task=T-101"
+updated: "2026-07-17T00:15:42Z"
+source_commit: "cffde1fa2736"
+update_event: "ship_refresh"
+context: "release_candidate=0.1.0a4"
 description: "Documents the reviewed checkout installer, CPU-only runtime, managed model, and safe purge boundary."
 ---
 
