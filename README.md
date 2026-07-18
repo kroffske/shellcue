@@ -33,7 +33,7 @@ uvx --from huggingface_hub==0.35.0 hf download \
   --local-dir "$MODEL_DIR"
 shellcue model verify "$MODEL_DIR"
 rm -rf "$MODEL_DIR/.cache"
-shellcue model install "$MODEL_DIR" --name shellcue-alpha --force
+shellcue model install "$MODEL_DIR" --name shellcue-lfm2.5-230m-alpha --force
 rm -rf "$MODEL_DIR"
 ```
 
@@ -46,6 +46,13 @@ shellcue model current
 shellcue service status
 shellcue doctor --strict
 ```
+
+In Zsh, pause briefly after typing a command prefix: ShellCue predicts in the
+background and paints the remaining suffix as gray ghost text. `Tab` accepts the
+next word, `Shift-Tab` accepts the full suffix, and normal Tab completion remains
+unchanged when no suggestion is visible. `Ctrl-]` remains an optional immediate
+request. Bash keeps the explicit `Ctrl-]` request because Readline does not expose
+Zsh's safe asynchronous `POSTDISPLAY` surface.
 
 See [docs/install.md](docs/install.md) for Bash/Zsh setup, removal, offline behavior,
 the optional digest-bound release-package path, and troubleshooting.
@@ -69,7 +76,7 @@ shellcue suggest
 shellcue daemon start|stop|status
 shellcue daemon run
 shellcue service install|uninstall|start|stop|status
-shellcue model install|list|current|use|uninstall|verify
+shellcue model install|list|current|use|rename|uninstall|verify
 shellcue shell-init
 shellcue install-shell
 shellcue uninstall-shell

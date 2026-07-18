@@ -9,6 +9,7 @@ import pytest
 from shellcue import __version__
 from shellcue.cli import _read_recent_stdin0, build_parser, main
 from shellcue.runtime.context import MAX_HISTORY, MAX_INPUT_COMMAND_CHARS, RuntimeContext
+from shellcue.runtime.doctor import Check
 from shellcue.runtime.service import ServiceState
 from shellcue.runtime.uninstall import UninstallResult
 
@@ -47,6 +48,7 @@ def test_public_cli_surface_is_exact() -> None:
         "list",
         "current",
         "use",
+        "rename",
         "uninstall",
         "verify",
     }
@@ -64,6 +66,25 @@ def test_version_and_shell_init(capsys) -> None:
 def test_verify_command(model_dir: Path, capsys) -> None:
     assert main(["model", "verify", str(model_dir)]) == 0
     assert "valid" in capsys.readouterr().out
+
+
+def test_doctor_strict_fails_required_runtime_check(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "shellcue.cli.checks",
+        lambda: (Check("daemon", False, "not running"),),
+    )
+
+    assert main(["doctor"]) == 0
+    assert main(["doctor", "--strict"]) == 1
+
+
+def test_doctor_strict_keeps_quality_probe_advisory(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "shellcue.cli.checks",
+        lambda: (Check("git-quality", False, "git stale", required=False),),
+    )
+
+    assert main(["doctor", "--strict"]) == 0
 
 
 def test_uninstall_command_reports_preserved_state(monkeypatch, capsys) -> None:

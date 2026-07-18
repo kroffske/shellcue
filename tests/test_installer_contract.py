@@ -17,6 +17,7 @@ def test_installer_defaults_to_checkout_and_freezes_external_inputs() -> None:
 
     assert 'UV_VERSION="0.11.28"' in source
     assert 'MODEL_REPO="kroffske/shellcue-lfm2.5-230m-alpha"' in source
+    assert 'MODEL_NAME="shellcue-lfm2.5-230m-alpha"' in source
     assert 'MODEL_REVISION="ae5b48546645926a6839df554a46596a8a19498e"' in source
     assert (
         'MODEL_WEIGHTS_SHA256="c4f7973c48eb04fa2e8013f0d03171fcfb4ee27c157dea31e96020b12b84fb53"'
@@ -33,8 +34,8 @@ def test_installer_defaults_to_checkout_and_freezes_external_inputs() -> None:
     assert 'rm -rf -- "$model_dir/.cache"' in source
     assert 'local install_source="$SOURCE_DIR"' in source
     assert (
-        'uv tool install --force --python "$PYTHON_VERSION" --torch-backend cpu '
-        '"$install_source"' in source
+        'uv tool install --force --refresh --python "$PYTHON_VERSION" '
+        '--torch-backend cpu \\\n    "$install_source"' in source
     )
     assert "shellcue[neural]" not in source
     assert "SHELLCUE_PACKAGE_URL" in source
@@ -46,6 +47,9 @@ def test_installer_defaults_to_checkout_and_freezes_external_inputs() -> None:
     assert "shellcue daemon status" in source
     assert "stop_current_shellcue" in source
     assert "shellcue service stop" in source
+    assert 'shellcue model rename "shellcue-alpha" "$MODEL_NAME"' in source
+    assert "pause after typing to see a suggestion" in source
+    assert "press Ctrl-] for a suggestion" in source
 
 
 def test_neural_runtime_dependencies_are_mandatory() -> None:

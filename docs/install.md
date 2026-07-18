@@ -28,11 +28,11 @@ cd shellcue
 ```
 
 With no package variables, `install.sh` installs the checkout containing the script by
-running `uv tool install` against that directory. It then downloads the model, installs
-the shell integration, registers the user service, waits for inference readiness, and
-runs strict diagnostics. The isolated tool uses uv's CPU-only PyTorch backend, so Ubuntu
-and WSL installations do not pull CUDA libraries. Re-running the installer upgrades or
-repairs the same tool.
+running a cache-refreshing `uv tool install` against that directory. It then downloads
+the model, installs the shell integration, registers the user service, waits for inference
+readiness, and runs strict diagnostics. The isolated tool uses uv's CPU-only PyTorch
+backend, so Ubuntu and WSL installations do not pull CUDA libraries. Re-running the
+installer upgrades or repairs the same tool even when its version string has not changed.
 
 ## Model download and verification
 
@@ -52,13 +52,16 @@ uvx --from huggingface_hub==0.35.0 hf download \
   --local-dir "$MODEL_DIR"
 shellcue model verify "$MODEL_DIR"
 rm -rf "$MODEL_DIR/.cache"
-shellcue model install "$MODEL_DIR" --name shellcue-alpha --force
+shellcue model install "$MODEL_DIR" --name shellcue-lfm2.5-230m-alpha --force
 rm -rf "$MODEL_DIR"
 ```
 
 The bootstrap performs these operations automatically and additionally anchors the
 download to the accepted weights and checksum-manifest digests. A valid existing managed
-copy is reused, so repeated installation does not download the model again.
+copy is reused, so repeated installation does not download the model again. Installations
+using the older generic registry name `shellcue-alpha` are renamed in place to
+`shellcue-lfm2.5-230m-alpha` without copying the 230M weights; an in-process configuration
+write failure rolls the directory move back.
 
 ## Optional digest-bound package source
 
@@ -117,12 +120,22 @@ shellcue install-shell bash
 shellcue uninstall-shell bash
 ```
 
-The hook binds ShellCue to `Ctrl-]`. Tab remains owned by the shell's normal completion.
-If ShellCue has no candidate, it leaves the command line unchanged. The hook does not
-record commands, emit telemetry, or upload context. It forwards at most eight prior
-history entries through bounded NUL-delimited standard input, keeping raw commands out
-of process arguments. The runtime masks them in memory before inference and does not
-persist them.
+The Zsh hook schedules prediction after a 200 ms typing pause without blocking
+`self-insert`. A result is painted as gray `POSTDISPLAY` text only when it still
+matches the current command-line buffer; stale results are discarded. `Tab` accepts
+one word, `Shift-Tab` accepts the whole suffix, and Tab falls through to the user's
+existing completion widget when no suggestion is visible. `Ctrl-]` remains an
+optional immediate request.
+
+Bash keeps the explicit `Ctrl-]` request because Readline does not expose an equivalent
+safe asynchronous ghost-text surface. If the model has no candidate, the Bash hook
+reports `ShellCue: no suggestion`; transport failure instead points to
+`shellcue doctor`.
+
+Neither hook records commands, emits telemetry, or uploads context. The hook forwards
+at most eight prior history entries through bounded NUL-delimited standard input,
+keeping raw commands out of process arguments. The runtime masks them in memory before
+inference and does not persist them.
 
 Installation also removes the exact legacy `smart-bash autocomplete` managed block.
 Before changing an rc file it retains the original once as `.zshrc.shellcue-backup` or
@@ -184,7 +197,9 @@ and configuration for a later reinstall.
 - The bootstrap waits up to 120 seconds for the inference socket after registering the
   service. Set `SHELLCUE_SERVICE_READY_TIMEOUT` to a larger integer on slower hardware.
 - `shellcue service status` reports service-manager state. `shellcue doctor --strict`
-  separately verifies Python, neural dependencies, and the active model.
+  separately verifies Python, neural dependencies, the active model, a functional
+  suggestion, and the current shell hook. Its non-blocking `git-quality` probe exposes
+  whether the development model can complete `git st` as `git status`.
 
 ## Alpha status and licenses
 

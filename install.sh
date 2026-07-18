@@ -7,7 +7,7 @@ PYTHON_VERSION="3.12"
 EXPECTED_VERSION="0.1.0a4"
 MODEL_REPO="kroffske/shellcue-lfm2.5-230m-alpha"
 MODEL_REVISION="ae5b48546645926a6839df554a46596a8a19498e"
-MODEL_NAME="shellcue-alpha"
+MODEL_NAME="shellcue-lfm2.5-230m-alpha"
 MODEL_WEIGHTS_SHA256="c4f7973c48eb04fa2e8013f0d03171fcfb4ee27c157dea31e96020b12b84fb53"
 MODEL_CHECKSUMS_SHA256="d781bffab68c5c667eb28f9a1591a7bb2347c16a63f39893f45d118eae5f4025"
 HF_TOOL="huggingface_hub==0.35.0"
@@ -82,7 +82,8 @@ install_tool() {
     say "installing ShellCue from source checkout at $SOURCE_DIR"
   fi
   stop_current_shellcue
-  uv tool install --force --python "$PYTHON_VERSION" --torch-backend cpu "$install_source"
+  uv tool install --force --refresh --python "$PYTHON_VERSION" --torch-backend cpu \
+    "$install_source"
   local tool_bin
   tool_bin="$(uv tool dir --bin)"
   export PATH="$tool_bin:$PATH"
@@ -105,6 +106,13 @@ current_model_path() {
   printf '%s\n' "${current#*$'\t'}"
 }
 
+current_model_name() {
+  local current
+  current="$(shellcue model current 2>/dev/null || true)"
+  [[ "$current" == *$'\t'* ]] || return 1
+  printf '%s\n' "${current%%$'\t'*}"
+}
+
 model_is_accepted() {
   local model_dir="$1"
   [[ -f "$model_dir/model.safetensors" && -f "$model_dir/checksums.sha256" ]] || return 1
@@ -120,8 +128,14 @@ model_is_accepted() {
 
 install_model() {
   local current=""
+  local current_name=""
   current="$(current_model_path || true)"
+  current_name="$(current_model_name || true)"
   if [[ -n "$current" ]] && model_is_accepted "$current"; then
+    if [[ "$current_name" == "shellcue-alpha" ]]; then
+      shellcue model rename "shellcue-alpha" "$MODEL_NAME"
+      current="$(current_model_path)"
+    fi
     say "reusing exact verified model snapshot at $current"
     return
   fi
@@ -192,7 +206,11 @@ install_runtime() {
   shellcue service install
   wait_for_service_ready
   shellcue doctor --strict
-  say "installed ShellCue; open a fresh ${TARGET_SHELL} and press Ctrl-] for a suggestion"
+  if [[ "$TARGET_SHELL" == "zsh" ]]; then
+    say "installed ShellCue; open a fresh zsh and pause after typing to see a suggestion"
+  else
+    say "installed ShellCue; open a fresh bash and press Ctrl-] for a suggestion"
+  fi
 }
 
 wait_for_service_ready() {

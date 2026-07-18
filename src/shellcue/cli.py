@@ -18,6 +18,7 @@ from shellcue.models.registry import (
     active_model_dir,
     install_model,
     list_models,
+    rename_model,
     uninstall_model,
     use_model,
 )
@@ -83,6 +84,10 @@ def build_parser() -> argparse.ArgumentParser:
     select = model_commands.add_parser("use")
     select.add_argument("name")
     select.set_defaults(handler=_cmd_model_use)
+    rename = model_commands.add_parser("rename")
+    rename.add_argument("name")
+    rename.add_argument("new_name")
+    rename.set_defaults(handler=_cmd_model_rename)
     remove = model_commands.add_parser("uninstall")
     remove.add_argument("name")
     remove.set_defaults(handler=_cmd_model_uninstall)
@@ -255,6 +260,12 @@ def _cmd_model_current(_args: argparse.Namespace) -> int:
 def _cmd_model_use(args: argparse.Namespace) -> int:
     selected = use_model(args.name)
     print(f"active {selected.name}")
+    return 0
+
+
+def _cmd_model_rename(args: argparse.Namespace) -> int:
+    renamed = rename_model(args.name, args.new_name)
+    print(f"renamed {args.name} to {renamed.name}")
     return 0
 
 

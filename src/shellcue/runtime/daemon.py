@@ -39,6 +39,7 @@ class _Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
 
     def __init__(self, path: str, predictor: NeuralPredictor) -> None:
         self.predictor = predictor
+        self.inference_lock = threading.Lock()
         super().__init__(path, _Handler)
 
 
@@ -46,10 +47,17 @@ class _Handler(socketserver.StreamRequestHandler):
     def handle(self) -> None:
         try:
             payload = json.loads(self.rfile.readline(1_048_576))
-            response = _serve_request(self.server.predictor, payload)  # type: ignore[attr-defined]
+            response = _serve_serialized_suggestion(  # type: ignore[attr-defined]
+                self.server.predictor,
+                self.server.inference_lock,
+                payload,
+            )
         except (ArtifactError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as exc:
             response = {"ok": False, "error": str(exc)}
-        self.wfile.write((json.dumps(response) + "\n").encode())
+        try:
+            self.wfile.write((json.dumps(response) + "\n").encode())
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
 
 def daemon_dir() -> Path:
@@ -173,17 +181,25 @@ def suggest(
 
 def request(payload: dict[str, Any], *, timeout: float) -> dict[str, Any]:
     data = (json.dumps(payload) + "\n").encode()
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-        client.settimeout(timeout)
-        client.connect(str(socket_path()))
-        client.sendall(data)
-        received = bytearray()
-        while not received.endswith(b"\n"):
-            chunk = client.recv(65_536)
-            if not chunk:
-                break
-            received.extend(chunk)
-    response = json.loads(received)
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(timeout)
+            client.connect(str(socket_path()))
+            client.sendall(data)
+            received = bytearray()
+            while not received.endswith(b"\n"):
+                chunk = client.recv(65_536)
+                if not chunk:
+                    break
+                received.extend(chunk)
+    except TimeoutError as exc:
+        raise RuntimeError(f"daemon request timed out after {timeout:g}s") from exc
+    except OSError as exc:
+        raise RuntimeError(f"daemon request failed: {exc}") from exc
+    try:
+        response = json.loads(received)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("daemon returned invalid JSON") from exc
     if not isinstance(response, dict):
         raise RuntimeError("daemon returned a non-object response")
     return response
@@ -203,6 +219,7 @@ def serve_forever() -> int:
         if model_dir is None:
             raise RuntimeError("no active model")
         predictor = NeuralPredictor.from_artifact(load_artifact(model_dir))
+        _warm_predictor(predictor)
         sock = socket_path()
         sock.unlink(missing_ok=True)
         owner_pid = os.getpid()
@@ -263,6 +280,25 @@ def _serve_request(predictor: NeuralPredictor, payload: object) -> dict[str, Any
             for item in suggestions
         ],
     }
+
+
+def _serve_serialized_suggestion(
+    predictor: NeuralPredictor,
+    inference_lock: threading.Lock,
+    payload: object,
+) -> dict[str, Any]:
+    if isinstance(payload, dict) and payload.get("op") == "suggest":
+        with inference_lock:
+            return _serve_request(predictor, payload)
+    return _serve_request(predictor, payload)
+
+
+def _warm_predictor(predictor: NeuralPredictor) -> None:
+    context = RuntimeContext.capture(cwd=None, recent_commands=()).render()
+    predictor.suggest(
+        SuggestionRequest(context_text=context, typed_prefix_masked="pytest -"),
+        limit=1,
+    )
 
 
 def _read_pid() -> int | None:
