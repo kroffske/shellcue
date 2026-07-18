@@ -1,34 +1,61 @@
 # ShellCue
 
-ShellCue is a local-first neural suggestion runtime for Bash and Zsh. This branch prepares
-`0.1.0a3`, a development alpha with `DEV_GRADE_SUPPORT`. It is not product-accepted,
-trusted, final, or a replacement for prospective validation on real shell use.
+ShellCue is a local-first neural suggestion runtime for Bash and Zsh. Version `0.1.0a4`
+is a development alpha with `DEV_GRADE_SUPPORT`. It is not product-accepted, trusted,
+final, or a replacement for prospective validation on real shell use.
 
 ShellCue performs inference on the local machine. It has no telemetry, hosted inference,
-or implicit model download. Recent command context is masked before it enters the model.
+or runtime network access. `install.sh` explicitly downloads the pinned model once; recent
+command context is masked before it enters the model.
 
-## Install
+## Install from GitHub
 
-The supported bootstrap installs a persistent isolated `uv tool`, the pinned public
-model, the Bash/Zsh hook, and a per-user service. This draft intentionally fails closed
-until the release artifact URL and SHA-256 are finalized. Maintainers can test an exact
-local sdist now:
+Run the installer from a Git checkout on macOS, Ubuntu, or WSL:
 
 ```bash
-uv build --sdist
-export SHELLCUE_PACKAGE_URL="file://$PWD/dist/shellcue-0.1.0a3.tar.gz"
-export SHELLCUE_PACKAGE_SHA256="$(shasum -a 256 dist/shellcue-0.1.0a3.tar.gz | awk '{print $1}')"
+git clone https://github.com/kroffske/shellcue.git
+cd shellcue
 ./install.sh
 ```
 
-`install.sh` installs `uv` if absent, installs `shellcue` with `uv tool install`,
-downloads the Hugging Face snapshot at its immutable commit OID, verifies the accepted
-weights SHA-256, migrates the legacy shell hook, and installs the user service.
-The package declares PyTorch, Transformers, Tokenizers, and Safetensors as mandatory
-runtime dependencies because every supported ShellCue installation performs local inference.
+No package URL or manual model pre-download is required. The bootstrap installs `uv` when
+absent, installs the current checkout as an isolated `uv tool`, downloads and verifies the
+pinned Hugging Face model, installs the Bash/Zsh hook, and starts a per-user service. The tool
+environment uses the CPU-only PyTorch backend; ShellCue does not download CUDA libraries.
+
+The model download performed by the installer is equivalent to:
+
+```bash
+MODEL_DIR="$(mktemp -d)"
+uvx --from huggingface_hub==0.35.0 hf download \
+  kroffske/shellcue-lfm2.5-230m-alpha \
+  --revision ae5b48546645926a6839df554a46596a8a19498e \
+  --local-dir "$MODEL_DIR"
+shellcue model verify "$MODEL_DIR"
+rm -rf "$MODEL_DIR/.cache"
+shellcue model install "$MODEL_DIR" --name shellcue-lfm2.5-230m-alpha --force
+rm -rf "$MODEL_DIR"
+```
+
+`install.sh` additionally checks the accepted weights and checksum-manifest SHA-256 before
+registering the model. Confirm the completed installation with:
+
+```bash
+shellcue --version
+shellcue model current
+shellcue service status
+shellcue doctor --strict
+```
+
+In Zsh, pause briefly after typing a command prefix: ShellCue predicts in the
+background and paints the remaining suffix as gray ghost text. `Tab` accepts the
+next word, `Shift-Tab` accepts the full suffix, and normal Tab completion remains
+unchanged when no suggestion is visible. `Ctrl-]` remains an optional immediate
+request. Bash keeps the explicit `Ctrl-]` request because Readline does not expose
+Zsh's safe asynchronous `POSTDISPLAY` surface.
 
 See [docs/install.md](docs/install.md) for Bash/Zsh setup, removal, offline behavior,
-and troubleshooting.
+the optional digest-bound release-package path, and troubleshooting.
 
 ## Runtime contract
 
@@ -38,8 +65,9 @@ diagnostics. Model files must include a versioned `inference_config.json`; runti
 reads or requires training metadata. Hugging Face download is an explicit external step.
 
 Code in this repository is MIT licensed. Model weights are distributed separately under
-their model repository's license. The alpha model is derived from
-`LiquidAI/LFM2.5-230M-Base`; do not infer that the runtime MIT license applies to weights.
+the LFM Open License v1.0, which includes a commercial-use limitation. The alpha model is
+derived from `LiquidAI/LFM2.5-230M-Base`; review the model repository's complete terms and
+do not infer that the runtime MIT license applies to weights.
 
 ## Commands
 
@@ -48,10 +76,11 @@ shellcue suggest
 shellcue daemon start|stop|status
 shellcue daemon run
 shellcue service install|uninstall|start|stop|status
-shellcue model install|list|current|use|uninstall|verify
+shellcue model install|list|current|use|rename|uninstall|verify
 shellcue shell-init
 shellcue install-shell
 shellcue uninstall-shell
+shellcue uninstall [--purge]
 shellcue doctor
 ```
 

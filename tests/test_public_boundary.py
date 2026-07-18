@@ -30,3 +30,13 @@ def test_runtime_tree_contains_only_public_owners() -> None:
     forbidden_directories = {"data", "eval", "training", "notebooks", "scripts"}
     assert not any((ROOT / name).exists() for name in forbidden_directories)
     assert not any(path.name in forbidden_directories for path in SOURCE.rglob("*"))
+
+
+def test_runtime_and_model_license_boundaries_are_explicit() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    install_guide = (ROOT / "docs/install.md").read_text(encoding="utf-8")
+
+    for document in (readme, install_guide):
+        assert "MIT licensed" in document
+        assert "LFM Open License v1.0" in document
+        assert "commercial-use limitation" in document

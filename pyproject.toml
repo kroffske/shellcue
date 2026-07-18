@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "shellcue"
-version = "0.1.0a3"
+version = "0.1.0a4"
 description = "Local neural command-line suggestions for Bash and Zsh"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,8 +23,8 @@ classifiers = [
 dependencies = [
   "safetensors>=0.4",
   "tokenizers>=0.20",
-  "torch>=2.2",
-  "transformers>=5.0.0",
+  "torch>=2.2,<3",
+  "transformers>=5.0.0,<6",
 ]
 
 [project.optional-dependencies]

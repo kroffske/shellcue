@@ -1,30 +1,82 @@
+---
+title: Install ShellCue development alpha
+type: guide
+status: active
+owner: ShellCue contributors
+tags: [install, model, uninstall]
+updated: "2026-07-17T00:15:42Z"
+source_commit: "cffde1fa2736"
+update_event: "ship_refresh"
+context: "release_candidate=0.1.0a4"
+description: "Documents the reviewed checkout installer, CPU-only runtime, managed model, and safe purge boundary."
+---
+
 # Install ShellCue development alpha
 
-ShellCue `0.1.0a3` requires Python 3.10 or newer. The bootstrap uses Python 3.12 in a
+ShellCue `0.1.0a4` requires Python 3.10 or newer. The bootstrap uses Python 3.12 in a
 persistent isolated `uv tool` environment. PyTorch, Transformers, Tokenizers, and
 Safetensors are mandatory package dependencies because ShellCue always performs local
 neural inference. Network access occurs only during explicit installation; normal
 runtime execution never needs network access or Hugging Face credentials.
 
-## Supported bootstrap
+## Install from a Git checkout
 
 ```bash
-uv build --sdist
-export SHELLCUE_PACKAGE_URL="file://$PWD/dist/shellcue-0.1.0a3.tar.gz"
-export SHELLCUE_PACKAGE_SHA256="$(shasum -a 256 dist/shellcue-0.1.0a3.tar.gz | awk '{print $1}')"
+git clone https://github.com/kroffske/shellcue.git
+cd shellcue
 ./install.sh
 ```
 
-These package variables are mandatory before the release is finalized. A future tag
-name is not accepted as an immutable package trust anchor. Release finalization must
-publish the exact sdist URL and digest, bind them into the public installation command,
-and re-run the bootstrap.
+With no package variables, `install.sh` installs the checkout containing the script by
+running a cache-refreshing `uv tool install` against that directory. It then downloads
+the model, installs the shell integration, registers the user service, waits for inference
+readiness, and runs strict diagnostics. The isolated tool uses uv's CPU-only PyTorch
+backend, so Ubuntu and WSL installations do not pull CUDA libraries. Re-running the
+installer upgrades or repairs the same tool even when its version string has not changed.
+
+## Model download and verification
 
 The installer pins the model repository to Hugging Face commit
 `ae5b48546645926a6839df554a46596a8a19498e` and requires `model.safetensors` SHA-256
 `c4f7973c48eb04fa2e8013f0d03171fcfb4ee27c157dea31e96020b12b84fb53`.
 It removes its temporary download directory after the model registry has made the
 verified managed copy.
+
+The explicit download and registry sequence is:
+
+```bash
+MODEL_DIR="$(mktemp -d)"
+uvx --from huggingface_hub==0.35.0 hf download \
+  kroffske/shellcue-lfm2.5-230m-alpha \
+  --revision ae5b48546645926a6839df554a46596a8a19498e \
+  --local-dir "$MODEL_DIR"
+shellcue model verify "$MODEL_DIR"
+rm -rf "$MODEL_DIR/.cache"
+shellcue model install "$MODEL_DIR" --name shellcue-lfm2.5-230m-alpha --force
+rm -rf "$MODEL_DIR"
+```
+
+The bootstrap performs these operations automatically and additionally anchors the
+download to the accepted weights and checksum-manifest digests. A valid existing managed
+copy is reused, so repeated installation does not download the model again. Installations
+using the older generic registry name `shellcue-alpha` are renamed in place to
+`shellcue-lfm2.5-230m-alpha` without copying the 230M weights; an in-process configuration
+write failure rolls the directory move back.
+
+## Optional digest-bound package source
+
+Release testing can replace the checkout with an exact package while keeping the same
+model and service flow:
+
+```bash
+uv build --sdist
+export SHELLCUE_PACKAGE_URL="file://$PWD/dist/shellcue-0.1.0a4.tar.gz"
+export SHELLCUE_PACKAGE_SHA256="$(shasum -a 256 dist/shellcue-0.1.0a4.tar.gz | awk '{print $1}')"
+./install.sh
+```
+
+If `SHELLCUE_PACKAGE_URL` is set, its SHA-256 is mandatory. The checkout path remains the
+default for GitHub users; the package override exists for an immutable release artifact.
 
 ## Platform and service behavior
 
@@ -68,12 +120,22 @@ shellcue install-shell bash
 shellcue uninstall-shell bash
 ```
 
-The hook binds ShellCue to `Ctrl-]`. Tab remains owned by the shell's normal completion.
-If ShellCue has no candidate, it leaves the command line unchanged. The hook does not
-record commands, emit telemetry, or upload context. It forwards at most eight prior
-history entries through bounded NUL-delimited standard input, keeping raw commands out
-of process arguments. The runtime masks them in memory before inference and does not
-persist them.
+The Zsh hook schedules prediction after a 200 ms typing pause without blocking
+`self-insert`. A result is painted as gray `POSTDISPLAY` text only when it still
+matches the current command-line buffer; stale results are discarded. `Tab` accepts
+one word, `Shift-Tab` accepts the whole suffix, and Tab falls through to the user's
+existing completion widget when no suggestion is visible. `Ctrl-]` remains an
+optional immediate request.
+
+Bash keeps the explicit `Ctrl-]` request because Readline does not expose an equivalent
+safe asynchronous ghost-text surface. If the model has no candidate, the Bash hook
+reports `ShellCue: no suggestion`; transport failure instead points to
+`shellcue doctor`.
+
+Neither hook records commands, emits telemetry, or uploads context. The hook forwards
+at most eight prior history entries through bounded NUL-delimited standard input,
+keeping raw commands out of process arguments. The runtime masks them in memory before
+inference and does not persist them.
 
 Installation also removes the exact legacy `smart-bash autocomplete` managed block.
 Before changing an rc file it retains the original once as `.zshrc.shellcue-backup` or
@@ -91,23 +153,42 @@ legacy databases, history, models, or other local data.
 Keep a custom `SHELLCUE_DAEMON_SOCKET` path short. Unix-domain socket paths have a
 small OS-specific length limit; the default ShellCue path stays within it.
 
-The runtime is offline. Download and installation are separate operations.
+The runtime is offline. The bootstrap performs the explicit network download before the
+service starts.
 
 ## Removal
 
+Remove the service and managed blocks from both Bash and Zsh while preserving local models
+and configuration:
+
 ```bash
-shellcue service uninstall
-shellcue uninstall-shell zsh  # or bash
+shellcue uninstall
 uv tool uninstall shellcue
 ```
 
-These commands leave `~/.cache/shellcue` and `~/.config/shellcue` intact. Delete those
-directories only after an explicit decision to remove the local model and configuration.
+Use the explicit purge flag to remove all ShellCue-owned cache, models, configuration, and
+daemon state before removing the program:
+
+```bash
+shellcue uninstall --purge
+uv tool uninstall shellcue
+```
+
+Purge honors `SHELLCUE_CACHE_DIR`, `SHELLCUE_CONFIG_DIR`, and independently overridden
+`SHELLCUE_DAEMON_DIR` or `SHELLCUE_DAEMON_SOCKET` paths. A root named `shellcue` is removed
+as application-owned state. For any other overridden root, purge removes only recognized
+ShellCue entries and preserves the root when unrelated entries remain. Symlinks, unsafe
+broad roots, and unexpected entry types are rejected before deleting anything. It never removes
+`~/.cache/huggingface`, an external `SHELLCUE_MODEL_DIR`, legacy Smart Bash data, or the
+`uv` tool installation itself. Plain `shellcue uninstall` intentionally keeps the cache
+and configuration for a later reinstall.
 
 ## Troubleshooting
 
-- `public alpha package is not finalized` means the draft installer correctly refused
-  a moving or unknown package. Supply an exact sdist URL and SHA-256 as shown above.
+- `SHELLCUE_PACKAGE_SHA256 requires SHELLCUE_PACKAGE_URL` means only half of the optional
+  package override was provided. Unset both variables for checkout installation.
+- `set SHELLCUE_PACKAGE_SHA256` means a package URL was supplied without a valid lowercase
+  SHA-256. Supply the exact digest or unset both package variables.
 - `systemd user services are unavailable` on Ubuntu means the user systemd manager is
   not running. On WSL, either enable systemd or accept the labeled session fallback.
 - `daemon did not become ready` waits 60 seconds by default and terminates only the child
@@ -116,10 +197,14 @@ directories only after an explicit decision to remove the local model and config
 - The bootstrap waits up to 120 seconds for the inference socket after registering the
   service. Set `SHELLCUE_SERVICE_READY_TIMEOUT` to a larger integer on slower hardware.
 - `shellcue service status` reports service-manager state. `shellcue doctor --strict`
-  separately verifies Python, neural dependencies, and the active model.
+  separately verifies Python, neural dependencies, the active model, a functional
+  suggestion, and the current shell hook. Its non-blocking `git-quality` probe exposes
+  whether the development model can complete `git st` as `git status`.
 
 ## Alpha status and licenses
 
 This is a development alpha with `DEV_GRADE_SUPPORT`, not product acceptance. Runtime
-code is MIT licensed. Model weights have a separate model license and attribution in the
-Hugging Face repository; the runtime license does not cover those weights.
+code is MIT licensed. Model weights use the separate LFM Open License v1.0, which includes
+a commercial-use limitation, plus attribution in the Hugging Face repository. Review the
+complete model terms before use or redistribution; the runtime license does not cover the
+weights.

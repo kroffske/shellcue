@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -37,6 +39,82 @@ def test_daemon_paths_use_shellcue_environment(tmp_path: Path, monkeypatch) -> N
     assert daemon.socket_path() == tmp_path / "shellcue.sock"
     assert daemon.pid_path() == tmp_path / "shellcue.pid"
     assert daemon.lock_path() == tmp_path / "shellcue.lock"
+
+
+def test_request_normalizes_socket_timeout(monkeypatch) -> None:
+    class _TimedOutSocket:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def settimeout(self, _timeout):
+            return None
+
+        def connect(self, _path):
+            return None
+
+        def sendall(self, _data):
+            return None
+
+        def recv(self, _size):
+            raise TimeoutError("timed out")
+
+    monkeypatch.setattr(daemon.socket, "socket", lambda *_args, **_kwargs: _TimedOutSocket())
+
+    with pytest.raises(RuntimeError, match="timed out"):
+        daemon.request({"op": "suggest"}, timeout=0.1)
+
+
+def test_suggestion_requests_are_serialized() -> None:
+    active = 0
+    overlap = False
+    barrier = threading.Barrier(2)
+    lock = threading.Lock()
+
+    class _SlowPredictor:
+        def suggest(self, _request, *, limit):
+            nonlocal active, overlap
+            with lock:
+                active += 1
+                overlap = overlap or active > 1
+            time.sleep(0.02)
+            with lock:
+                active -= 1
+            return ()
+
+    predictor = _SlowPredictor()
+    inference_lock = threading.Lock()
+
+    def invoke() -> None:
+        barrier.wait()
+        daemon._serve_serialized_suggestion(
+            predictor,
+            inference_lock,
+            {"op": "suggest", "prefix": "git s", "cwd": None, "recent": []},
+        )
+
+    threads = [threading.Thread(target=invoke) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=1)
+
+    assert not overlap
+
+
+def test_warmup_runs_real_predictor_path() -> None:
+    seen: list[tuple[str, int]] = []
+
+    class _Predictor:
+        def suggest(self, request, *, limit):
+            seen.append((request.typed_prefix_masked, limit))
+            return ()
+
+    daemon._warm_predictor(_Predictor())
+
+    assert seen == [("pytest -", 1)]
 
 
 @pytest.mark.parametrize(

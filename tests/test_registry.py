@@ -13,6 +13,7 @@ from shellcue.models.registry import (
     active_model_dir,
     install_model,
     list_models,
+    rename_model,
     uninstall_model,
     use_model,
 )
@@ -44,6 +45,44 @@ def test_registry_never_modifies_source(model_dir: Path, tmp_path: Path, monkeyp
     install_model(model_dir, name="copy")
 
     assert sorted(path.name for path in model_dir.iterdir()) == before
+
+
+def test_registry_rename_moves_model_without_copying(
+    model_dir: Path, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("SHELLCUE_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("SHELLCUE_CONFIG_DIR", str(tmp_path / "config"))
+    installed = install_model(model_dir, name="shellcue-alpha")
+
+    renamed = rename_model("shellcue-alpha", "shellcue-lfm2.5-230m-alpha")
+
+    assert renamed.active
+    assert renamed.name == "shellcue-lfm2.5-230m-alpha"
+    assert renamed.model_dir.name == "shellcue-lfm2.5-230m-alpha"
+    assert not installed.model_dir.exists()
+    assert active_model_dir() == renamed.model_dir
+
+
+def test_registry_rename_rolls_back_when_config_write_fails(
+    model_dir: Path, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("SHELLCUE_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("SHELLCUE_CONFIG_DIR", str(tmp_path / "config"))
+    installed = install_model(model_dir, name="old")
+    original_write = registry._write_config
+
+    def fail_write(_payload):
+        raise OSError("config write failed")
+
+    monkeypatch.setattr(registry, "_write_config", fail_write)
+
+    with pytest.raises(OSError, match="config write failed"):
+        rename_model("old", "new")
+
+    monkeypatch.setattr(registry, "_write_config", original_write)
+    assert installed.model_dir.is_dir()
+    assert not (installed.model_dir.parent / "new").exists()
+    assert active_model_dir() == installed.model_dir
 
 
 def test_force_install_swap_failure_preserves_previous_model(

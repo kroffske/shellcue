@@ -18,6 +18,7 @@ from shellcue.models.registry import (
     active_model_dir,
     install_model,
     list_models,
+    rename_model,
     uninstall_model,
     use_model,
 )
@@ -29,6 +30,7 @@ from shellcue.runtime.shell_integration import (
     render_shell_init,
     uninstall_shell,
 )
+from shellcue.runtime.uninstall import uninstall as uninstall_runtime
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -82,6 +84,10 @@ def build_parser() -> argparse.ArgumentParser:
     select = model_commands.add_parser("use")
     select.add_argument("name")
     select.set_defaults(handler=_cmd_model_use)
+    rename = model_commands.add_parser("rename")
+    rename.add_argument("name")
+    rename.add_argument("new_name")
+    rename.set_defaults(handler=_cmd_model_rename)
     remove = model_commands.add_parser("uninstall")
     remove.add_argument("name")
     remove.set_defaults(handler=_cmd_model_uninstall)
@@ -102,6 +108,14 @@ def build_parser() -> argparse.ArgumentParser:
     shell_remove.add_argument("shell", choices=("bash", "zsh"), nargs="?", default=_default_shell())
     shell_remove.add_argument("--rc-file", type=Path)
     shell_remove.set_defaults(handler=_cmd_uninstall_shell)
+
+    uninstall = commands.add_parser("uninstall", help="remove ShellCue runtime integration")
+    uninstall.add_argument(
+        "--purge",
+        action="store_true",
+        help="also remove ShellCue-owned cache, configuration, and daemon state",
+    )
+    uninstall.set_defaults(handler=_cmd_uninstall)
 
     doctor = commands.add_parser("doctor", help="check local inference readiness")
     doctor.add_argument("--strict", action="store_true")
@@ -249,6 +263,12 @@ def _cmd_model_use(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_model_rename(args: argparse.Namespace) -> int:
+    renamed = rename_model(args.name, args.new_name)
+    print(f"renamed {args.name} to {renamed.name}")
+    return 0
+
+
 def _cmd_model_uninstall(args: argparse.Namespace) -> int:
     removed = uninstall_model(args.name)
     print(f"uninstalled {removed.name}")
@@ -267,6 +287,24 @@ def _cmd_install_shell(args: argparse.Namespace) -> int:
 
 def _cmd_uninstall_shell(args: argparse.Namespace) -> int:
     print(uninstall_shell(args.shell, rc_path=args.rc_file))
+    return 0
+
+
+def _cmd_uninstall(args: argparse.Namespace) -> int:
+    result = uninstall_runtime(purge=args.purge)
+    _print_service_state(result.service_state)
+    for path in result.shell_paths:
+        print(f"managed shell hook removed or already absent at {path}")
+    if args.purge:
+        for path in result.purged_paths:
+            print(f"purged {path}")
+        for path in result.preserved_paths:
+            print(f"preserved non-ShellCue entries under {path}")
+        if not result.purged_paths:
+            print("ShellCue state was already absent")
+    else:
+        print("preserved ShellCue cache and configuration")
+    print("program remains installed; run 'uv tool uninstall shellcue' to remove it")
     return 0
 
 

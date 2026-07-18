@@ -9,7 +9,7 @@ import re
 import shutil
 import threading
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -153,6 +153,54 @@ def use_model(name: str) -> InstalledModel:
     return InstalledModel(model_name, match.model_dir, True)
 
 
+def rename_model(name: str, new_name: str) -> InstalledModel:
+    """Rename one managed model in place without copying its weights."""
+
+    model_name = normalize_name(name)
+    replacement_name = normalize_name(new_name)
+    if replacement_name == model_name:
+        raise ValueError("new model name must differ from the current name")
+    match = next((item for item in list_models() if item.name == model_name), None)
+    if match is None:
+        raise FileNotFoundError(f"installed model not found: {model_name}")
+    source = models_dir() / model_name
+    target = models_dir() / replacement_name
+    if Path(os.path.abspath(match.model_dir)) != Path(os.path.abspath(source)):
+        raise ValueError(f"refusing to rename model outside {models_dir().resolve()}")
+    with _model_transactions(source, target):
+        _recover_interrupted_replacement_locked(source)
+        _recover_interrupted_replacement_locked(target)
+        if not source.is_dir():
+            raise FileNotFoundError(f"installed model not found: {model_name}")
+        if target.exists():
+            raise FileExistsError(f"model already installed: {replacement_name}")
+        load_artifact(source)
+        config = _read_config()
+        entries = config.setdefault("models", {})
+        if not isinstance(entries, dict):
+            entries = {}
+            config["models"] = entries
+        if replacement_name in entries:
+            raise FileExistsError(f"model already registered: {replacement_name}")
+        was_active = config.get("active_model") == model_name
+        previous_entry = entries.pop(model_name, None)
+        entries[replacement_name] = {"path": str(target)}
+        if was_active:
+            config["active_model"] = replacement_name
+        os.replace(source, target)
+        try:
+            _write_config(config)
+        except BaseException:
+            os.replace(target, source)
+            if previous_entry is not None:
+                entries[model_name] = previous_entry
+            entries.pop(replacement_name, None)
+            if was_active:
+                config["active_model"] = model_name
+            raise
+    return InstalledModel(replacement_name, target, was_active)
+
+
 def uninstall_model(name: str) -> InstalledModel:
     model_name = normalize_name(name)
     match = next((item for item in list_models() if item.name == model_name), None)
@@ -219,6 +267,14 @@ def _model_transaction(target: Path) -> Iterator[None]:
             yield
         finally:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def _model_transactions(*targets: Path) -> Iterator[None]:
+    with ExitStack() as stack:
+        for target in sorted(set(targets), key=lambda item: str(item)):
+            stack.enter_context(_model_transaction(target))
+        yield
 
 
 def _read_config() -> dict[str, Any]:
