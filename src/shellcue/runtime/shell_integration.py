@@ -212,36 +212,37 @@ _shellcue_start_prediction() {
     if [[ "$delay" != "0" ]]; then
       sleep "$delay"
     fi
-    [[ "$(cat "$SHELLCUE_ZSH_STATE_FILE" 2>/dev/null)" == "$request_id" ]] || exit 0
-    local -a shellcue_args
-    local -a shellcue_recent
-    local line
-    local count=0
-    local suffix=""
-    local shellcue_ok=0
-    shellcue_args=(suggest --plain --prefix "$current" --cwd "$cwd")
-    while IFS= read -r line && (( count < 8 )); do
-      if [[ -n "${line//[[:space:]]/}" ]]; then
-        shellcue_recent+=("$line")
-        (( count += 1 ))
+    if [[ "$(cat "$SHELLCUE_ZSH_STATE_FILE" 2>/dev/null)" == "$request_id" ]]; then
+      local -a shellcue_args
+      local -a shellcue_recent
+      local line
+      local count=0
+      local suffix=""
+      local shellcue_ok=0
+      shellcue_args=(suggest --plain --prefix "$current" --cwd "$cwd")
+      while IFS= read -r line && (( count < 8 )); do
+        if [[ -n "${line//[[:space:]]/}" ]]; then
+          shellcue_recent+=("$line")
+          (( count += 1 ))
+        fi
+      done < <(fc -ln -8 2>/dev/null)
+      if (( ${#shellcue_recent[@]} > 0 )); then
+        if suffix="$(
+          printf '%s\0' "${shellcue_recent[@]}" |
+            command shellcue "${shellcue_args[@]}" --recent-stdin0 2>/dev/null
+        )"; then
+          shellcue_ok=1
+        fi
+      else
+        if suffix="$(command shellcue "${shellcue_args[@]}" 2>/dev/null)"; then
+          shellcue_ok=1
+        fi
       fi
-    done < <(fc -ln -8 2>/dev/null)
-    if (( ${#shellcue_recent[@]} > 0 )); then
-      if suffix="$(
-        printf '%s\0' "${shellcue_recent[@]}" |
-          command shellcue "${shellcue_args[@]}" --recent-stdin0 2>/dev/null
-      )"; then
-        shellcue_ok=1
+      if (( shellcue_ok )); then
+        print -r -- "0${suffix}"
+      else
+        print -r -- "1"
       fi
-    else
-      if suffix="$(command shellcue "${shellcue_args[@]}" 2>/dev/null)"; then
-        shellcue_ok=1
-      fi
-    fi
-    if (( shellcue_ok )); then
-      print -r -- "0${suffix}"
-    else
-      print -r -- "1"
     fi
   )
   SHELLCUE_ZSH_PENDING_FD="$fd"

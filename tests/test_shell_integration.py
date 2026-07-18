@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -209,6 +211,57 @@ def test_zsh_async_worker_frames_transport_failure(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert "frame:1" in result.stdout
+
+
+def test_zsh_stale_worker_does_not_trigger_apple_terminal_session_save(
+    tmp_path: Path,
+) -> None:
+    executable = shutil.which("zsh")
+    apple_terminal_init = Path("/etc/zshrc_Apple_Terminal")
+    if executable is None or not apple_terminal_init.is_file():
+        pytest.skip("Apple Terminal Zsh integration is unavailable")
+    history = tmp_path / "history"
+    snippet = render_shell_init("zsh")
+    script = "\n".join(
+        [
+            "zle() { return 0; }",
+            "bindkey() { return 0; }",
+            f"HISTFILE={shlex.quote(str(history))}",
+            "SAVEHIST=100",
+            "HISTSIZE=100",
+            "/usr/bin/touch \"$HISTFILE\"",
+            f"source {shlex.quote(str(apple_terminal_init))}",
+            snippet,
+            "_shellcue_start_prediction 'git st' '0.01'",
+            "_shellcue_invalidate_pending",
+            "IFS= read -r frame <&$SHELLCUE_ZSH_PENDING_FD || true",
+            "autoload -Uz add-zsh-hook",
+            "add-zsh-hook -d zshexit shell_session_update",
+        ]
+    )
+    env = os.environ.copy()
+    env.update(
+        {
+            "TERM_SESSION_ID": "SHELLCUE-STALE-WORKER-REGRESSION",
+            "ZDOTDIR": str(tmp_path),
+            "SHELL_SESSIONS_DISABLE": "0",
+            "SHELL_SESSION_DID_INIT": "0",
+        }
+    )
+
+    result = subprocess.run(
+        [executable, "-d", "-f", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Saving session" not in result.stderr
+    session_dir = tmp_path / ".zsh_sessions"
+    assert not tuple(session_dir.glob("*.session"))
+    assert not tuple(session_dir.glob("*.history"))
 
 
 @pytest.mark.parametrize("shell", ["bash", "zsh"])
