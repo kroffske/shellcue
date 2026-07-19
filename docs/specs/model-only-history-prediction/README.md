@@ -92,7 +92,7 @@ README before context implementation begins.
 
 | Task | Role | Status |
 |---|---|---|
-| T-106 — Enforce model-only candidate generation | Removes and installs out current candidate-generating bypasses; proves model-only source identity. | `locus task state T-106` |
+| T-106 — Enforce model-only candidate generation | Removes and installs out current candidate-generating bypasses; proves model-only source identity. | done |
 | T-104 — Build standard-command quality eval | Preserves generalized standard-command quality as a checkpoint gate, not a runtime answer source. | `locus task state T-104` |
 | T-107 — Freeze history-context and privacy contract | Fixes context selection, identity copying, consent, masking, and runtime/training boundaries. | `locus task state T-107` |
 | T-108 — Build history-conditioned dataset and evaluator | Materializes frozen variable-history data and comparable model-only evaluation. | `locus task state T-108` |
@@ -103,17 +103,18 @@ README before context implementation begins.
 
 | Requirement | Evidence | Result |
 |---|---|---|
-| REQ-001, REQ-008 | T-106 repository tests, installed-package scan, direct suggestion source trace, and PTY transcript. | pending T-106 |
+| REQ-001, REQ-008 | T-106 repository tests, installed-package scan, direct suggestion source trace, accepted QA, and PTY transcript. | accepted 2026-07-19 for bypass removal and model-only runtime source |
 | REQ-005 | T-104 standard-command panel plus T-108 history-conditioned evaluator manifests and reviewed reports. | pending T-104/T-108 |
 | REQ-002, REQ-003, REQ-004 | T-107 accepted contract and T-108 frozen fixtures/adversarial privacy gates. | pending T-107/T-108 |
 | REQ-005, REQ-007 | T-109 checkpoint comparison and T-110 artifact/install/rollback evidence. | pending T-109/T-110 |
-| REQ-006 | T-110 real Zsh PTY transcript on the installed candidate. | pending T-110 |
+| REQ-006 | T-106 accepted PTY evidence on the current alpha runtime plus T-110 real Zsh PTY transcript on the selected checkpoint. | current runtime accepted; checkpoint proof pending T-110 |
 
 ## Change history
 
 | Date | Change | Reason |
 |---|---|---|
 | 2026-07-19 | Initial accepted specification. | The owner rejected deterministic history and catalog completions as invalid product behavior and requested a model-training milestone. |
+| 2026-07-19 | T-106 rollback evidence accepted. | The source and installed runtime now expose only model candidates; real alpha-model Git/SSH quality debt remains visible. |
 
 ## Source of truth
 
