@@ -2,7 +2,7 @@
 schema: task.v3
 id: T-111
 title: "Create ShellCue Training repository and migrate ML ownership"
-status: planned
+status: done
 review_required: qa
 plan_review_profile: standard
 plan_review_gate: required
@@ -10,7 +10,7 @@ type: feature
 priority: p1
 owner: manager
 created_at: "2026-07-19T18:33:21.459Z"
-updated_at: 2026-07-19T18:45:34.529Z
+updated_at: 2026-07-19T19:54:49.950Z
 parent: null
 depends_on: []
 milestone: m1-model-only-history
@@ -88,36 +88,36 @@ Decision history: [planning.md](planning.md).
 
 ## Work items
 
-- [ ] W1 (freeze ownership and donor manifest): Record repository commits,
+- [x] W1 (freeze ownership and donor manifest): Record repository commits,
   selected donor paths, dispositions, source hashes, license/provenance, import
   dependencies, and explicit rejected classes.
   - Deliverable: reviewed migration manifest and no-copy/private-data policy.
-- [ ] W2 (land ShellCue contract authority): Add/version the prompt/artifact
+- [x] W2 (land ShellCue contract authority): Add/version the prompt/artifact
   contract and golden fixtures required by training, preserve runtime-only
   packaging, and update the canonical milestone/task dependency graph.
   - Deliverable: isolated ShellCue PR with contract tests and no model cutover.
-- [ ] W3 (bootstrap sibling repository): Create local
+- [x] W3 (bootstrap sibling repository): Create local
   `/Users/ravius/projects/shellcue-training`, package `shellcue_training`,
   locked dependencies, package-first module layout, thin CLI, tests, and CI.
   - Deliverable: clean local Git repository that installs in a fresh env.
-- [ ] W4 (migrate data/evaluation core): Rewrite selected materialization,
+- [x] W4 (migrate data/evaluation core): Rewrite selected materialization,
   context packing, benchmark, standard-command, privacy, split, and manifest
   logic against the ShellCue contract.
   - Deliverable: deterministic dataset/eval commands and golden-vector parity.
-- [ ] W5 (migrate training/artifact core): Rewrite the current Liquid causal
+- [x] W5 (migrate training/artifact core): Rewrite the current Liquid causal
   trainer, preflight, canary, checkpoint-selection, provenance, and artifact
   exporter without Smart Bash runtime imports.
   - Deliverable: bounded canary/export path plus a fixture artifact accepted by
     `shellcue model verify`.
-- [ ] W6 (migrate active docs/config/tests): Port only current contracts,
+- [x] W6 (migrate active docs/config/tests): Port only current contracts,
   generic Liquid configs, data cards, experiment docs, and load-bearing tests;
   record historical or rejected files instead of copying them.
   - Deliverable: self-contained operator documentation and test coverage.
-- [ ] W7 (prove independence and privacy): Run fresh-env, Smart-Bash deletion,
+- [x] W7 (prove independence and privacy): Run fresh-env, Smart-Bash deletion,
   import/package scans, donor-manifest audit, ShellCue build/public-boundary
   regression, and cross-repository contract tests.
   - Deliverable: QA evidence sufficient to declare ownership migrated.
-- [ ] W8 (retire old authority and prepare delivery): Mark Smart Bash T-299
+- [x] W8 (retire old authority and prepare delivery): Mark Smart Bash T-299
   (repair prompt framing and retrain Liquid) superseded/reference-only, record
   downstream task owners/dependencies, and prepare separate PR/audit boundaries
   for ShellCue and the new repository.
