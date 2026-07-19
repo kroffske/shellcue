@@ -32,6 +32,15 @@ def test_runtime_tree_contains_only_public_owners() -> None:
     assert not any(path.name in forbidden_directories for path in SOURCE.rglob("*"))
 
 
+def test_runtime_contains_no_candidate_generating_bypass() -> None:
+    source = "\n".join(path.read_text(encoding="utf-8") for path in SOURCE.rglob("*.py"))
+
+    assert "standard_command_catalog_v1" not in source
+    assert "recent_history_exact_v1" not in source
+    assert not (SOURCE / "models" / "standard_commands.py").exists()
+    assert not (SOURCE / "models" / "recent_history.py").exists()
+
+
 def test_runtime_and_model_license_boundaries_are_explicit() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     install_guide = (ROOT / "docs/install.md").read_text(encoding="utf-8")

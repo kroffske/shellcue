@@ -64,6 +64,11 @@ candidate safety, model registry, daemon, masked live context, shell integration
 diagnostics. Model files must include a versioned `inference_config.json`; runtime never
 reads or requires training metadata. Hugging Face download is an explicit external step.
 
+Every visible candidate is generated and ranked by the neural model. Deterministic code
+may collect and mask context, reject unsafe or stale output, and render a candidate; it
+does not create, rank, retrieve, or substitute command suggestions. A rejected model
+result therefore becomes abstention, not a catalog or history fallback.
+
 Code in this repository is MIT licensed. Model weights are distributed separately under
 the LFM Open License v1.0, which includes a commercial-use limitation. The alpha model is
 derived from `LiquidAI/LFM2.5-230M-Base`; review the model repository's complete terms and

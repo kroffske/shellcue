@@ -22,11 +22,9 @@ from shellcue.core.safety import candidate_is_safe
 from shellcue.models.artifact import ArtifactError, SuggestionRequest, load_artifact
 from shellcue.models.neural import NeuralPredictor
 from shellcue.models.registry import active_model_dir, cache_dir
-from shellcue.models.standard_commands import STANDARD_COMMAND_POLICY_ID
 from shellcue.runtime.context import RuntimeContext
 
 DEFAULT_START_TIMEOUT = 60.0
-SUGGESTION_SOURCES = frozenset({"model", STANDARD_COMMAND_POLICY_ID})
 
 
 @dataclass(frozen=True)
@@ -332,7 +330,7 @@ def _validate_response_candidates(candidates: object, *, prefix: str) -> tuple[d
             or not isinstance(score, (int, float))
             or isinstance(score, bool)
             or not math.isfinite(float(score))
-            or source not in SUGGESTION_SOURCES
+            or source != "model"
             or command != masked_prefix + suffix
             or not candidate_is_safe(masked_prefix, suffix)
         ):
