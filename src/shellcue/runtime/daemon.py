@@ -22,9 +22,11 @@ from shellcue.core.safety import candidate_is_safe
 from shellcue.models.artifact import ArtifactError, SuggestionRequest, load_artifact
 from shellcue.models.neural import NeuralPredictor
 from shellcue.models.registry import active_model_dir, cache_dir
+from shellcue.models.standard_commands import STANDARD_COMMAND_POLICY_ID
 from shellcue.runtime.context import RuntimeContext
 
 DEFAULT_START_TIMEOUT = 60.0
+SUGGESTION_SOURCES = frozenset({"model", STANDARD_COMMAND_POLICY_ID})
 
 
 @dataclass(frozen=True)
@@ -84,11 +86,7 @@ def lock_path() -> Path:
 
 def status(timeout: float = 0.2) -> DaemonStatus:
     pid = _read_pid()
-    running = (
-        pid is not None
-        and _pid_alive(pid)
-        and _probe_daemon_pid(timeout=timeout) == pid
-    )
+    running = pid is not None and _pid_alive(pid) and _probe_daemon_pid(timeout=timeout) == pid
     return DaemonStatus(running=running, pid=pid if running else None, socket_path=socket_path())
 
 
@@ -121,18 +119,14 @@ def start(timeout: float = DEFAULT_START_TIMEOUT) -> DaemonStatus:
     return _wait_until_ready(timeout=timeout, process=process)
 
 
-def _wait_until_ready(
-    *, timeout: float, process: subprocess.Popen[bytes] | None
-) -> DaemonStatus:
+def _wait_until_ready(*, timeout: float, process: subprocess.Popen[bytes] | None) -> DaemonStatus:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         current = status()
         if current.running:
             return current
         if process is not None and process.poll() is not None and not _lifetime_lock_held():
-            raise RuntimeError(
-                f"daemon exited with code {process.returncode}; see {log_path()}"
-            )
+            raise RuntimeError(f"daemon exited with code {process.returncode}; see {log_path()}")
         time.sleep(0.05)
     if process is not None and process.poll() is None:
         process.terminate()
@@ -319,9 +313,7 @@ def _probe_daemon_pid(*, timeout: float) -> int | None:
     return pid if pid > 0 else None
 
 
-def _validate_response_candidates(
-    candidates: object, *, prefix: str
-) -> tuple[dict[str, Any], ...]:
+def _validate_response_candidates(candidates: object, *, prefix: str) -> tuple[dict[str, Any], ...]:
     if not isinstance(candidates, list):
         raise RuntimeError("daemon candidates must be a list")
     masked_prefix = mask_command(prefix)
@@ -340,7 +332,7 @@ def _validate_response_candidates(
             or not isinstance(score, (int, float))
             or isinstance(score, bool)
             or not math.isfinite(float(score))
-            or source != "model"
+            or source not in SUGGESTION_SOURCES
             or command != masked_prefix + suffix
             or not candidate_is_safe(masked_prefix, suffix)
         ):

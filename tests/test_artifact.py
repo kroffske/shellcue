@@ -44,6 +44,16 @@ def test_unknown_candidate_policy_fails_closed(model_dir: Path) -> None:
         load_artifact(model_dir)
 
 
+def test_artifact_rejects_unbounded_beam_count(model_dir: Path) -> None:
+    path = model_dir / "inference_config.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["decode"]["beams"] = 6
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ArtifactError, match=r"decode\.beams must be from 1 to 5"):
+        load_artifact(model_dir)
+
+
 def test_training_config_is_rejected_not_loaded(model_dir: Path) -> None:
     (model_dir / "training_config.json").write_text("{}", encoding="utf-8")
 
