@@ -1,0 +1,2 @@
+{"ts": "2026-07-19T14:15:25.462Z", "event": "created", "actor": "manager", "data": {"status": "planning"}}
+{"ts": "2026-07-19T14:15:25.462Z", "event": "note", "actor": "manager", "data": {"kind": "status_note", "topic": "workflow_selection", "profile": "feature", "source": "flag", "text": "workflow profile 'feature' selected (flag)"}}
