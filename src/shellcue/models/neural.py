@@ -15,6 +15,7 @@ from shellcue.models.artifact import (
     SuggestionRequest,
 )
 from shellcue.models.candidates import GeneratedCandidate, safe_suggestions
+from shellcue.models.standard_commands import apply_standard_command_policy
 
 DTYPE_ENV = "SHELLCUE_NEURAL_DTYPE"
 logger = logging.getLogger(__name__)
@@ -68,26 +69,36 @@ class NeuralPredictor:
     ) -> tuple[Suggestion, ...]:
         config = _apply_budget(self._config, budget)
         prompt_ids, fragment = self._prompt(request, config)
-        generated = self._generate(prompt_ids, config, limit)
+        generated = self._generate(prompt_ids, config)
         suggestions = safe_suggestions(
             request.typed_prefix_masked,
             generated,
             typed_fragment=fragment,
-            limit=limit,
+            limit=max(limit, len(generated)),
         )
         if suggestions or config.empty_heal_fallback != "no_heal_parse_valid":
-            return suggestions
+            return apply_standard_command_policy(
+                request.typed_prefix_masked,
+                suggestions,
+                limit=limit,
+            )
         fallback = replace(config, beams=1, token_healing=False, healing=False)
         prompt_ids, _ = self._prompt(request, fallback)
-        return safe_suggestions(
+        fallback_generated = self._generate(prompt_ids, fallback)
+        return apply_standard_command_policy(
             request.typed_prefix_masked,
-            self._generate(prompt_ids, fallback, limit),
+            safe_suggestions(
+                request.typed_prefix_masked,
+                fallback_generated,
+                limit=max(limit, len(fallback_generated)),
+            ),
             limit=limit,
         )
 
     def release_caches(self) -> None:
         try:
             import torch
+
             if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
                 torch.mps.empty_cache()
             elif torch.cuda.is_available():
@@ -95,27 +106,25 @@ class NeuralPredictor:
         except (ImportError, RuntimeError):
             return
 
-    def _prompt(
-        self, request: SuggestionRequest, config: InferenceConfig
-    ) -> tuple[list[int], str]:
+    def _prompt(self, request: SuggestionRequest, config: InferenceConfig) -> tuple[list[int], str]:
         context = _pack_context(request.context_text, config.per_cmd_chars)
         encoded_context = self._tokenizer(context, add_special_tokens=False)["input_ids"]
         context_ids = encoded_context[-config.ctx_max :]
         separator_ids = self._tokenizer("\n", add_special_tokens=False)["input_ids"]
         prefix = request.typed_prefix_masked
         committed, fragment = _split_prefix(prefix) if config.token_healing else (prefix, "")
-        prefix_ids = self._tokenizer(
-            committed[: config.per_cmd_chars], add_special_tokens=False
-        )["input_ids"][: config.cmd_max]
+        prefix_ids = self._tokenizer(committed[: config.per_cmd_chars], add_special_tokens=False)[
+            "input_ids"
+        ][: config.cmd_max]
         return context_ids + separator_ids + prefix_ids, fragment
 
     def _generate(
-        self, prompt_ids: list[int], config: InferenceConfig, limit: int
+        self, prompt_ids: list[int], config: InferenceConfig
     ) -> tuple[GeneratedCandidate, ...]:
         import torch
 
         input_ids = torch.tensor([prompt_ids], dtype=torch.long, device=self._device)
-        beams = max(1, min(config.beams, max(1, limit)))
+        beams = max(1, config.beams)
         with torch.no_grad():
             output = self._model.generate(
                 input_ids=input_ids,
@@ -148,9 +157,7 @@ def _apply_budget(config: InferenceConfig, budget: DecodeBudget | None) -> Infer
         return config
     beams = budget.beams if budget.beams is not None else config.beams
     steps = (
-        budget.max_decode_steps
-        if budget.max_decode_steps is not None
-        else config.max_decode_steps
+        budget.max_decode_steps if budget.max_decode_steps is not None else config.max_decode_steps
     )
     return replace(config, beams=beams, max_decode_steps=steps)
 

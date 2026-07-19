@@ -44,6 +44,7 @@ _DECODE_FIELDS = {
 }
 _TOKENIZATION_FIELDS = {"ctx_max", "cmd_max", "per_cmd_chars", "separator", "healing"}
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+MAX_GENERATION_BEAMS = 5
 
 
 class ArtifactError(ValueError):
@@ -72,9 +73,7 @@ class ModelManifest:
             raise ArtifactError("weights_format must be safetensors or torch_state_dict")
         input_fields = payload.get("input_fields")
         if input_fields != ["context_text", "typed_prefix_masked"]:
-            raise ArtifactError(
-                "input_fields must be ['context_text', 'typed_prefix_masked']"
-            )
+            raise ArtifactError("input_fields must be ['context_text', 'typed_prefix_masked']")
         hashes = payload.get("file_hashes")
         if not isinstance(hashes, dict) or not hashes:
             raise ArtifactError("file_hashes must be a non-empty object")
@@ -139,9 +138,7 @@ class InferenceConfig:
         decode = _required_object(payload, "decode")
         tokenization = _required_object(payload, "tokenization")
         _reject_unknown(decode, _DECODE_FIELDS, "inference_config.json decode")
-        _reject_unknown(
-            tokenization, _TOKENIZATION_FIELDS, "inference_config.json tokenization"
-        )
+        _reject_unknown(tokenization, _TOKENIZATION_FIELDS, "inference_config.json tokenization")
         newline_stop_id = decode.get("newline_stop_id")
         if newline_stop_id is not None and not _is_int(newline_stop_id):
             raise ArtifactError("decode.newline_stop_id must be an integer or null")
@@ -150,9 +147,7 @@ class InferenceConfig:
             raise ArtifactError("decode.empty_heal_fallback is unsupported")
         candidate_policy = _required_str(decode, "candidate_policy")
         if candidate_policy != "current_whitespace_heal_v1":
-            raise ArtifactError(
-                "decode.candidate_policy must be 'current_whitespace_heal_v1'"
-            )
+            raise ArtifactError("decode.candidate_policy must be 'current_whitespace_heal_v1'")
         separator = _required_str(tokenization, "separator")
         if separator != "newline":
             raise ArtifactError("tokenization.separator must be 'newline'")
@@ -171,6 +166,8 @@ class InferenceConfig:
         )
         if config.healing != config.token_healing:
             raise ArtifactError("decode.token_healing and tokenization.healing must match")
+        if config.beams > MAX_GENERATION_BEAMS:
+            raise ArtifactError(f"decode.beams must be from 1 to {MAX_GENERATION_BEAMS}")
         return config
 
 
@@ -199,6 +196,8 @@ class DecodeBudget:
         ):
             if value is not None and (not _is_int(value) or value < 1):
                 raise ValueError(f"DecodeBudget.{name} must be a positive integer or None")
+        if self.beams is not None and self.beams > MAX_GENERATION_BEAMS:
+            raise ValueError(f"DecodeBudget.beams must be from 1 to {MAX_GENERATION_BEAMS}")
 
 
 @dataclass(frozen=True)
