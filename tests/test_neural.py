@@ -143,7 +143,7 @@ def test_generation_uses_artifact_beams_independently_of_display_limit(
     assert model.kwargs["num_return_sequences"] == 4
 
 
-def test_policy_considers_valid_later_beam_before_catalog_fallback(monkeypatch) -> None:
+def test_predictor_uses_valid_later_model_beam(monkeypatch) -> None:
     predictor = neural.NeuralPredictor(
         object(),
         object(),
@@ -155,7 +155,7 @@ def test_policy_considers_valid_later_beam_before_catalog_fallback(monkeypatch) 
         predictor,
         "_generate",
         lambda *_args: (
-            GeneratedCandidate(" sudo apt-get install git", -0.1),
+            GeneratedCandidate(" s; rm -rf /tmp/shellcue-test", -0.1),
             GeneratedCandidate(" status --short", -0.2),
         ),
     )
@@ -166,3 +166,30 @@ def test_policy_considers_valid_later_beam_before_catalog_fallback(monkeypatch) 
     )
 
     assert result[0].command == "git status --short"
+    assert result[0].source == "model"
+
+
+def test_predictor_abstains_when_both_model_passes_are_unsafe(monkeypatch) -> None:
+    predictor = neural.NeuralPredictor(
+        object(),
+        object(),
+        inference_config(beams=2),
+        "cpu",
+    )
+    generated_calls = 0
+    monkeypatch.setattr(predictor, "_prompt", lambda *_args: ([], " s"))
+
+    def generate(*_args) -> tuple[GeneratedCandidate, ...]:
+        nonlocal generated_calls
+        generated_calls += 1
+        return (GeneratedCandidate(" s; rm -rf /tmp/shellcue-test", -0.1),)
+
+    monkeypatch.setattr(predictor, "_generate", generate)
+
+    result = predictor.suggest(
+        SuggestionRequest(context_text="", typed_prefix_masked="git s"),
+        limit=1,
+    )
+
+    assert result == ()
+    assert generated_calls == 2

@@ -15,7 +15,6 @@ from shellcue.models.artifact import (
     SuggestionRequest,
 )
 from shellcue.models.candidates import GeneratedCandidate, safe_suggestions
-from shellcue.models.standard_commands import apply_standard_command_policy
 
 DTYPE_ENV = "SHELLCUE_NEURAL_DTYPE"
 logger = logging.getLogger(__name__)
@@ -77,23 +76,15 @@ class NeuralPredictor:
             limit=max(limit, len(generated)),
         )
         if suggestions or config.empty_heal_fallback != "no_heal_parse_valid":
-            return apply_standard_command_policy(
-                request.typed_prefix_masked,
-                suggestions,
-                limit=limit,
-            )
+            return suggestions[:limit]
         fallback = replace(config, beams=1, token_healing=False, healing=False)
         prompt_ids, _ = self._prompt(request, fallback)
         fallback_generated = self._generate(prompt_ids, fallback)
-        return apply_standard_command_policy(
+        return safe_suggestions(
             request.typed_prefix_masked,
-            safe_suggestions(
-                request.typed_prefix_masked,
-                fallback_generated,
-                limit=max(limit, len(fallback_generated)),
-            ),
-            limit=limit,
-        )
+            fallback_generated,
+            limit=max(limit, len(fallback_generated)),
+        )[:limit]
 
     def release_caches(self) -> None:
         try:

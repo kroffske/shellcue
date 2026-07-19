@@ -193,7 +193,7 @@ def test_client_rejects_every_invalid_daemon_candidate(candidate: object, monkey
         daemon.suggest(prefix="git s", cwd=None, recent_commands=[], limit=1)
 
 
-def test_client_accepts_standard_command_policy_source(monkeypatch) -> None:
+def test_client_rejects_non_model_candidate_source(monkeypatch) -> None:
     monkeypatch.setattr(
         daemon,
         "request",
@@ -210,14 +210,13 @@ def test_client_accepts_standard_command_policy_source(monkeypatch) -> None:
         },
     )
 
-    result = daemon.suggest(
-        prefix="git s",
-        cwd=None,
-        recent_commands=[],
-        limit=1,
-    )
-
-    assert result[0]["source"] == "standard_command_catalog_v1"
+    with pytest.raises(RuntimeError, match="daemon candidate"):
+        daemon.suggest(
+            prefix="git s",
+            cwd=None,
+            recent_commands=[],
+            limit=1,
+        )
 
 
 class _FakeProcess:
