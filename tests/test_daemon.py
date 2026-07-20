@@ -12,8 +12,12 @@ from shellcue.runtime import daemon
 
 class _FakePredictor:
     def suggest(self, request, *, limit: int):
-        assert "<SECRET>" in request.context_text
-        assert request.typed_prefix_masked == "git s"
+        # Context stays masked; the typed prefix reaches the model complete.
+        # docs/contracts/autocomplete-v2.md:11-12 — `recent_commands` are
+        # "already-masked", `typed_prefix` is "complete text visible at the
+        # shell prompt".
+        assert "<SECRET>" in "\n".join(request.recent_commands)
+        assert request.typed_prefix == "git s"
         return (Suggestion(suffix="tatus", command="git status", score=-0.1),)
 
 
@@ -109,7 +113,7 @@ def test_warmup_runs_real_predictor_path() -> None:
 
     class _Predictor:
         def suggest(self, request, *, limit):
-            seen.append((request.typed_prefix_masked, limit))
+            seen.append((request.typed_prefix, limit))
             return ()
 
     daemon._warm_predictor(_Predictor())

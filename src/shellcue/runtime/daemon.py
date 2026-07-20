@@ -17,9 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from shellcue.core.redaction import mask_command
 from shellcue.core.safety import candidate_is_safe
-from shellcue.models.artifact import ArtifactError, SuggestionRequest, load_artifact
+from shellcue.models.artifact import ArtifactError, load_artifact
 from shellcue.models.neural import NeuralPredictor
 from shellcue.models.registry import active_model_dir, cache_dir
 from shellcue.runtime.context import RuntimeContext
@@ -256,10 +255,7 @@ def _serve_request(predictor: NeuralPredictor, payload: object) -> dict[str, Any
         cwd=cwd,
         recent_commands=recent,
     )
-    request_value = SuggestionRequest(
-        context_text=context.render(), typed_prefix_masked=mask_command(prefix)
-    )
-    suggestions = predictor.suggest(request_value, limit=limit)
+    suggestions = predictor.suggest(context.request(prefix), limit=limit)
     return {
         "ok": True,
         "candidates": [
@@ -286,11 +282,8 @@ def _serve_serialized_suggestion(
 
 
 def _warm_predictor(predictor: NeuralPredictor) -> None:
-    context = RuntimeContext.capture(cwd=None, recent_commands=()).render()
-    predictor.suggest(
-        SuggestionRequest(context_text=context, typed_prefix_masked="pytest -"),
-        limit=1,
-    )
+    context = RuntimeContext.capture(cwd=None, recent_commands=())
+    predictor.suggest(context.request("pytest -"), limit=1)
 
 
 def _read_pid() -> int | None:
@@ -314,7 +307,6 @@ def _probe_daemon_pid(*, timeout: float) -> int | None:
 def _validate_response_candidates(candidates: object, *, prefix: str) -> tuple[dict[str, Any], ...]:
     if not isinstance(candidates, list):
         raise RuntimeError("daemon candidates must be a list")
-    masked_prefix = mask_command(prefix)
     validated: list[dict[str, Any]] = []
     expected_fields = {"suffix", "command", "score", "source"}
     for index, item in enumerate(candidates):
@@ -331,8 +323,8 @@ def _validate_response_candidates(candidates: object, *, prefix: str) -> tuple[d
             or isinstance(score, bool)
             or not math.isfinite(float(score))
             or source != "model"
-            or command != masked_prefix + suffix
-            or not candidate_is_safe(masked_prefix, suffix)
+            or command != prefix + suffix
+            or not candidate_is_safe(prefix, suffix)
         ):
             raise RuntimeError(f"daemon candidate {index} violates the suggestion contract")
         validated.append(item)

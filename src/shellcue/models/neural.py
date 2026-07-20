@@ -15,6 +15,7 @@ from shellcue.models.artifact import (
     SuggestionRequest,
 )
 from shellcue.models.candidates import GeneratedCandidate, safe_suggestions
+from shellcue.models.prompt_contract import PromptContractError, PromptInput, render_prompt
 
 DTYPE_ENV = "SHELLCUE_NEURAL_DTYPE"
 logger = logging.getLogger(__name__)
@@ -67,10 +68,16 @@ class NeuralPredictor:
         budget: DecodeBudget | None = None,
     ) -> tuple[Suggestion, ...]:
         config = _apply_budget(self._config, budget)
-        prompt_ids, fragment = self._prompt(request, config)
+        try:
+            prompt_ids, fragment = self._prompt(request, config)
+        except PromptContractError:
+            # The contract forbids invoking an alternative predictor when the
+            # mandatory fields do not fit, so abstain rather than serve a
+            # different prompt shape.
+            return ()
         generated = self._generate(prompt_ids, config)
         suggestions = safe_suggestions(
-            request.typed_prefix_masked,
+            request.typed_prefix,
             generated,
             typed_fragment=fragment,
             limit=max(limit, len(generated)),
@@ -78,10 +85,16 @@ class NeuralPredictor:
         if suggestions or config.empty_heal_fallback != "no_heal_parse_valid":
             return suggestions[:limit]
         fallback = replace(config, beams=1, token_healing=False, healing=False)
+        if fallback.beams == config.beams:
+            # Healing no longer changes the rendered prompt, so once beams match
+            # the retry would re-render identical bytes and repeat a
+            # deterministic greedy decode. Abstain instead of paying 2x latency
+            # for a provably identical result.
+            return suggestions[:limit]
         prompt_ids, _ = self._prompt(request, fallback)
         fallback_generated = self._generate(prompt_ids, fallback)
         return safe_suggestions(
-            request.typed_prefix_masked,
+            request.typed_prefix,
             fallback_generated,
             limit=max(limit, len(fallback_generated)),
         )[:limit]
@@ -97,17 +110,39 @@ class NeuralPredictor:
         except (ImportError, RuntimeError):
             return
 
+    def _encode(self, text: str) -> list[int]:
+        return self._tokenizer(text, add_special_tokens=False)["input_ids"]
+
     def _prompt(self, request: SuggestionRequest, config: InferenceConfig) -> tuple[list[int], str]:
-        context = _pack_context(request.context_text, config.per_cmd_chars)
-        encoded_context = self._tokenizer(context, add_special_tokens=False)["input_ids"]
-        context_ids = encoded_context[-config.ctx_max :]
-        separator_ids = self._tokenizer("\n", add_special_tokens=False)["input_ids"]
-        prefix = request.typed_prefix_masked
-        committed, fragment = _split_prefix(prefix) if config.token_healing else (prefix, "")
-        prefix_ids = self._tokenizer(committed[: config.per_cmd_chars], add_special_tokens=False)[
-            "input_ids"
-        ][: config.cmd_max]
-        return context_ids + separator_ids + prefix_ids, fragment
+        """Render the v2 prompt contract; this is the runtime's only serializer.
+
+        ``token_healing`` deliberately does not influence the rendered bytes.
+        The contract forbids truncating the typed prefix, and the prompt now
+        ends with the fixed ``completion_suffix:`` sentinel, so generation always
+        resumes at a contract-owned token boundary and there is no BPE seam left
+        for healing to repair.
+
+        The budget is ``ctx_max`` alone, not ``ctx_max + cmd_max``. v2 has a
+        single whole-prompt budget, and offline materialization uses
+        ``min(prompt_max_tokens, sequence_max_tokens - generation_reserve)``,
+        which is 512 at the shipped defaults and equals the shipped artifact's
+        ``ctx_max``. Summing would retain history here that training would have
+        dropped for the same input -- the same silent skew this renderer exists
+        to remove. ``cmd_max`` no longer bounds anything: the contract never
+        truncates the typed prefix.
+        """
+
+        rendered = render_prompt(
+            PromptInput(
+                source_kind=request.source_kind,
+                typed_prefix=request.typed_prefix,
+                cwd_hint=request.cwd_hint,
+                recent_commands=request.recent_commands,
+            ),
+            encode=self._encode,
+            max_tokens=config.ctx_max,
+        )
+        return list(rendered.token_ids), ""
 
     def _generate(
         self, prompt_ids: list[int], config: InferenceConfig
@@ -151,28 +186,6 @@ def _apply_budget(config: InferenceConfig, budget: DecodeBudget | None) -> Infer
         budget.max_decode_steps if budget.max_decode_steps is not None else config.max_decode_steps
     )
     return replace(config, beams=beams, max_decode_steps=steps)
-
-
-def _split_prefix(prefix: str) -> tuple[str, str]:
-    split = prefix.rfind(" ")
-    return (prefix[:split], prefix[split:]) if split >= 0 else ("", prefix)
-
-
-def _pack_context(context: str, per_command_chars: int) -> str:
-    source = ""
-    cwd = ""
-    recents: list[str] = []
-    for line in context.splitlines():
-        if line.startswith("source_kind:"):
-            source = line.strip()
-        elif line.startswith("cwd_hint:"):
-            cwd = line.strip()
-        elif line.startswith("recent_"):
-            recents.append(line[:per_command_chars].rstrip())
-    if not source and not cwd and not recents:
-        return context[:8192]
-    prefix = ([source] if source else []) + ([cwd] if cwd else [])
-    return "\n".join(prefix + list(reversed(recents)))
 
 
 def _newline_stop_id(tokenizer: Any, configured: int | None) -> int:

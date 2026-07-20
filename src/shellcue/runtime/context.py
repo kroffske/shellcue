@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from shellcue.core.redaction import mask_command
+from shellcue.models.artifact import SuggestionRequest
 
+SOURCE_KIND = "live_shell"
 MAX_HISTORY = 8
 MAX_COMMAND_CHARS = 160
 MAX_CWD_CHARS = 80
@@ -37,13 +39,33 @@ class RuntimeContext:
             retained.append(mask_command(command)[:MAX_COMMAND_CHARS])
         return cls(cwd_hint=_cwd_hint(cwd), recent_commands=tuple(retained))
 
-    def render(self) -> str:
-        lines = ["source_kind: live_shell"]
-        if self.cwd_hint:
-            lines.append(f"cwd_hint: {self.cwd_hint}")
-        for index, command in enumerate(reversed(self.recent_commands), start=1):
-            lines.append(f"recent_{index}: {command}")
-        return "\n".join(lines)
+    def request(self, typed_prefix: str) -> SuggestionRequest:
+        """Bind masked context to the complete typed prefix for the model.
+
+        The prefix is passed through unmasked on purpose. Per
+        ``docs/contracts/autocomplete-v2.md`` the contract masks ``cwd_hint``
+        and ``recent_commands`` but defines ``typed_prefix`` as the complete
+        text visible at the shell prompt.
+        """
+
+        return SuggestionRequest(
+            source_kind=SOURCE_KIND,
+            typed_prefix=typed_prefix,
+            cwd_hint=self.cwd_hint or "",
+            recent_commands=self.newest_first,
+        )
+
+    @property
+    def newest_first(self) -> tuple[str, ...]:
+        """Masked history ordered newest first, as the prompt contract expects.
+
+        ``recent_commands`` is stored oldest first because both shell hooks
+        emit history that way (``builtin history 8`` in Bash, ``fc -ln -8`` in
+        Zsh). The contract numbers ``recent_1`` as the newest entry, nearest the
+        typed prefix, so the runtime must reverse before rendering.
+        """
+
+        return tuple(reversed(self.recent_commands))
 
 
 def _cwd_hint(cwd: str | None) -> str | None:
