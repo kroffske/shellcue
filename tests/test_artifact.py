@@ -102,3 +102,50 @@ def test_hash_validation_streams_files(model_dir: Path, monkeypatch) -> None:
     monkeypatch.setattr(Path, "read_bytes", forbidden_read_bytes)
 
     assert load_artifact(model_dir).model_dir == model_dir
+
+
+def _rewrite_input_fields(model_dir: Path, value: object) -> None:
+    path = model_dir / "model.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["input_fields"] = value
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_artifact_accepts_the_v2_contract_input_vocabulary(model_dir: Path) -> None:
+    """`docs/contracts/autocomplete-v2.md` names these four fields, not the legacy pair."""
+
+    _rewrite_input_fields(model_dir, ["source_kind", "cwd_hint", "recent_commands", "typed_prefix"])
+
+    loaded = load_artifact(model_dir)
+
+    assert loaded.manifest.input_fields == (
+        "source_kind",
+        "cwd_hint",
+        "recent_commands",
+        "typed_prefix",
+    )
+
+
+def test_artifact_still_accepts_the_legacy_input_fields(model_dir: Path) -> None:
+    """Existing artifacts must keep loading; the conftest fixture declares the legacy pair."""
+
+    loaded = load_artifact(model_dir)
+
+    assert loaded.manifest.input_fields == ("context_text", "typed_prefix_masked")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        ["typed_prefix"],
+        ["source_kind", "typed_prefix"],
+        ["context_text"],
+        [],
+        "source_kind",
+    ],
+)
+def test_artifact_rejects_any_other_input_field_vocabulary(model_dir: Path, value: object) -> None:
+    _rewrite_input_fields(model_dir, value)
+
+    with pytest.raises(ArtifactError, match="input_fields must be"):
+        load_artifact(model_dir)

@@ -15,9 +15,7 @@ from shellcue.runtime.uninstall import UninstallResult
 
 
 def _choices(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
-    action = next(
-        item for item in parser._actions if isinstance(item, argparse._SubParsersAction)
-    )
+    action = next(item for item in parser._actions if isinstance(item, argparse._SubParsersAction))
     return action.choices
 
 
@@ -123,7 +121,7 @@ def test_nul_stdin_history_is_bounded_then_masked_by_runtime() -> None:
     raw_secret = "export API_TOKEN=abcdefghijklmnopqrstuvwxyz0123456789"
     entries = _read_recent_stdin0(BytesIO(f"git status\0{raw_secret}\0".encode()))
 
-    context = RuntimeContext.capture(cwd=None, recent_commands=entries).render()
+    context = "\n".join(RuntimeContext.capture(cwd=None, recent_commands=entries).newest_first)
 
     assert entries == ["git status", raw_secret]
     assert raw_secret not in context

@@ -11,8 +11,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from shellcue import __version__
-from shellcue.core.redaction import mask_command
-from shellcue.models.artifact import ArtifactError, SuggestionRequest, load_artifact
+from shellcue.models.artifact import ArtifactError, load_artifact
 from shellcue.models.neural import NeuralPredictor
 from shellcue.models.registry import (
     active_model_dir,
@@ -152,10 +151,7 @@ def _cmd_suggest(args: argparse.Namespace) -> int:
         context = RuntimeContext.capture(cwd=args.cwd, recent_commands=recent_commands)
         predictor = NeuralPredictor.from_artifact(load_artifact(model_dir))
         suggestions = predictor.suggest(
-            SuggestionRequest(
-                context_text=context.render(),
-                typed_prefix_masked=mask_command(args.prefix),
-            ),
+            context.request(args.prefix),
             limit=args.limit,
         )
         candidates = tuple(

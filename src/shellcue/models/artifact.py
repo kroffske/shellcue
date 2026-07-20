@@ -45,6 +45,12 @@ _DECODE_FIELDS = {
 _TOKENIZATION_FIELDS = {"ctx_max", "cmd_max", "per_cmd_chars", "separator", "healing"}
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 MAX_GENERATION_BEAMS = 5
+# The v2 prompt contract's input vocabulary (docs/contracts/autocomplete-v2.md).
+CONTRACT_INPUT_FIELDS = ("source_kind", "cwd_hint", "recent_commands", "typed_prefix")
+# Pre-v2 artifacts declare this literal. It never described a trained shape: the
+# exporter emitted it verbatim because this verifier demanded it, so it carries
+# no information and is accepted only so existing artifacts keep loading.
+LEGACY_INPUT_FIELDS = ("context_text", "typed_prefix_masked")
 
 
 class ArtifactError(ValueError):
@@ -72,8 +78,11 @@ class ModelManifest:
         if weights_format not in {"safetensors", "torch_state_dict"}:
             raise ArtifactError("weights_format must be safetensors or torch_state_dict")
         input_fields = payload.get("input_fields")
-        if input_fields != ["context_text", "typed_prefix_masked"]:
-            raise ArtifactError("input_fields must be ['context_text', 'typed_prefix_masked']")
+        if input_fields not in (list(CONTRACT_INPUT_FIELDS), list(LEGACY_INPUT_FIELDS)):
+            raise ArtifactError(
+                f"input_fields must be {list(CONTRACT_INPUT_FIELDS)}"
+                f" or the legacy {list(LEGACY_INPUT_FIELDS)}"
+            )
         hashes = payload.get("file_hashes")
         if not isinstance(hashes, dict) or not hashes:
             raise ArtifactError("file_hashes must be a non-empty object")
@@ -180,8 +189,18 @@ class LoadedArtifact:
 
 @dataclass(frozen=True)
 class SuggestionRequest:
-    context_text: str
-    typed_prefix_masked: str
+    """Structured v2 prompt-contract input, never a pre-rendered prompt.
+
+    Fields mirror ``docs/contracts/autocomplete-v2.md``. ``cwd_hint`` and
+    ``recent_commands`` arrive already masked from ``RuntimeContext``;
+    ``typed_prefix`` is the complete text visible at the shell prompt and is
+    never masked or truncated. ``recent_commands`` is ordered newest first.
+    """
+
+    source_kind: str
+    typed_prefix: str
+    cwd_hint: str = ""
+    recent_commands: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
