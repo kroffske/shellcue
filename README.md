@@ -5,8 +5,10 @@ is a development alpha with `DEV_GRADE_SUPPORT`. It is not product-accepted, tru
 final, or a replacement for prospective validation on real shell use.
 
 ShellCue performs inference on the local machine. It has no telemetry, hosted inference,
-or runtime network access. `install.sh` explicitly downloads the pinned model once; recent
-command context is masked before it enters the model.
+or runtime network access. `install.sh` explicitly downloads the pinned model once. Recent
+command context is kept local and its live credentials are masked before it enters the
+model; paths, hosts, and URLs are preserved on purpose, because a local completion exists
+to reuse them.
 
 ## Install from GitHub
 

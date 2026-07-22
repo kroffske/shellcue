@@ -370,3 +370,54 @@ def test_captured_context_renders_the_contract_prompt_end_to_end() -> None:
     ).text
 
     assert _served_prompt_text(request, replace(inference_config(), ctx_max=4096)) == expected
+
+
+def test_generation_stops_at_the_newline_and_truncates_there(monkeypatch) -> None:
+    """The runtime must stop at the newline the training target now ends with.
+
+    Two guards have to agree: generation is told to end on the newline token
+    (`eos_token_id`), and the decoded text is cut at the first newline. If
+    either regressed, a suggestion would carry whatever the model rambled after
+    the command — the same defect that made the trained targets unstoppable.
+    """
+
+    class _NoGrad:
+        def __enter__(self) -> None:
+            return None
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    class _Tensor:
+        shape = (1, 1)
+
+    fake_torch = ModuleType("torch")
+    fake_torch.long = "long"
+    fake_torch.tensor = lambda *_args, **_kwargs: _Tensor()
+    fake_torch.ones_like = lambda value: value
+    fake_torch.no_grad = _NoGrad
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+
+    class _Model:
+        def __init__(self) -> None:
+            self.kwargs: dict[str, object] = {}
+
+        def generate(self, **kwargs: object) -> SimpleNamespace:
+            self.kwargs = kwargs
+            return SimpleNamespace(sequences=[[10, 11]], sequences_scores=None)
+
+    class _Tokenizer:
+        pad_token_id = 0
+
+        @staticmethod
+        def decode(tokens: list[int], *, skip_special_tokens: bool) -> str:
+            # Everything after the newline must be dropped by the caller.
+            return "status --short\nrm -rf /tmp"
+
+    model = _Model()
+    predictor = neural.NeuralPredictor(model, _Tokenizer(), inference_config(), "cpu")
+
+    generated = predictor._generate([10], inference_config())
+
+    assert model.kwargs["eos_token_id"] == 708  # the configured newline stop id
+    assert generated[0].text == "status --short"

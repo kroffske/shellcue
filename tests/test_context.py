@@ -6,24 +6,36 @@ from shellcue.models.prompt_contract import PromptInput, render_prompt
 from shellcue.runtime.context import RuntimeContext
 
 
-def test_live_context_masks_secrets_paths_and_identity() -> None:
+def test_live_context_keeps_paths_urls_and_hosts_but_masks_credentials() -> None:
+    """Local context is signal, not disclosure — except live credentials.
+
+    URLs, paths, and hosts in recent history are exactly what a context-aware
+    completion reuses, and the model runs locally so they never leave the
+    machine. Only a credential must be withheld, because re-emitting one has no
+    completion value and could surface it on screen or in a log.
+    """
     request = RuntimeContext.capture(
-        cwd="/Users/private-name/projects/secret-repo",
+        cwd="/Users/private-name/projects/app-repo",
         recent_commands=[
-            "curl https://secret.example/a",
+            "curl -fsSL https://get.example.test/install.sh -o install.sh",
+            "ssh deploy@build.example.test",
+            "scp dist.tar.gz deploy@build.example.test:/srv/releases",
             "export API_TOKEN=abcdefghijklmnopqrstuvwxyz0123456789",
-            "cat /Users/private-name/.ssh/id_rsa",
         ],
     ).request("git s")
     context = "\n".join((request.cwd_hint, *request.recent_commands))
 
-    assert "private-name" not in context
-    assert "secret.example" not in context
+    # Preserved: the exact values a completion would want to reuse.
+    assert "https://get.example.test/install.sh" in context
+    assert "build.example.test" in context
+    assert "/srv/releases" in context
+
+    # Masked: the one live credential, value gone but the shape kept.
     assert "abcdefghijklmnopqrstuvwxyz" not in context
-    assert "<URL>" in context
-    assert "<SECRET>" in context
-    assert "<PATH>" in context
-    assert request.cwd_hint == "repo:secret-repo"
+    assert "API_TOKEN=<SECRET>" in context
+
+    # The cwd hint is reduced to a repo basename by capture, not by masking.
+    assert request.cwd_hint == "repo:app-repo"
 
 
 def test_live_context_accepts_exactly_eight_commands() -> None:
