@@ -7,8 +7,9 @@ building data, training, evaluating, or exporting an artifact.
 ## Input
 
 - `source_kind`: required request surface, currently `live_shell`.
-- `cwd_hint`: optional masked repository hint.
-- `recent_commands`: bounded, already-masked commands ordered newest first.
+- `cwd_hint`: optional repository hint, reduced to a basename.
+- `recent_commands`: bounded commands ordered newest first, with live credentials masked
+  and paths, hosts, and URLs preserved for local reuse.
 - `typed_prefix`: complete text visible at the shell prompt.
 
 ## Serialization
